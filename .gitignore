@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+outputs/
+tmp/
+backend/data/saved_queries.json
+backend/data/saved_query_groups.json
+backend/data/api_documentation.json

@@ -1,0 +1,9 @@
+services:
+  graphql-hub:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      FRONTEND_ORIGINS: http://localhost:8000
+      AI_ENABLED: "false"
+    restart: unless-stopped
