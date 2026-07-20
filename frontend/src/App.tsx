@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, Braces, CheckCircle2, ChevronDown, ChevronRight, CircleStop, Clock3, Copy, Database, Download,
-  ExternalLink, FileJson, FileSpreadsheet, FolderOpen, KeyRound, Layers3, LoaderCircle, Moon, Play,
+  ExternalLink, FileJson, FileSpreadsheet, FolderOpen, KeyRound, Layers3, LoaderCircle, Moon, Palette, Play,
   Plus, RefreshCw, Save, Search, Settings2, Sun, Table2, Trash2, Wifi, XCircle,
 } from 'lucide-react'
 import './App.css'
@@ -78,6 +78,29 @@ const ADD_GROUP_VALUE = '__add_group__'
 const ALL_GROUPS_VALUE = 'ALL'
 const DEFAULT_OPENAPI_URL = 'https://csat5.resourcescheduler.net/RSMCP/swagger/docs/v1'
 
+type ThemePalette = 'blue' | 'leaf' | 'orange' | 'monochrome' | 'burgundy'
+type ThemeMode = 'light' | 'dark'
+type ThemePreference = { palette: ThemePalette; mode: ThemeMode }
+
+const THEME_PALETTES: Array<{ value: ThemePalette; label: string }> = [
+  { value: 'blue', label: 'Blue' },
+  { value: 'leaf', label: 'Leaf green' },
+  { value: 'orange', label: 'Burnt orange' },
+  { value: 'monochrome', label: 'Monochrome' },
+  { value: 'burgundy', label: 'Burgundy' },
+]
+
+function loadThemePreference(): ThemePreference {
+  const stored = localStorage.getItem(THEME_KEY)
+  if (stored === 'light' || stored === 'dark') return { palette: 'blue', mode: stored }
+  const [palette, mode] = (stored || 'blue-dark').split('-')
+  const validPalette = THEME_PALETTES.some((option) => option.value === palette)
+  return {
+    palette: validPalette ? palette as ThemePalette : 'blue',
+    mode: mode === 'light' ? 'light' : 'dark',
+  }
+}
+
 type ResultTab = 'json' | 'table' | 'errors'
 
 type SavedQueryContextMenu = {
@@ -144,7 +167,7 @@ function DocumentationInputFields({ fields }: { fields: ApiDocumentationInputFie
 }
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem(THEME_KEY) !== 'light')
+  const [theme, setTheme] = useState<ThemePreference>(loadThemePreference)
   const [authenticationOpen, setAuthenticationOpen] = useState(false)
   const [authenticationUsername, setAuthenticationUsername] = useState('ossy')
   const [authenticationPassword, setAuthenticationPassword] = useState('')
@@ -193,6 +216,7 @@ function App() {
   const [documentationError, setDocumentationError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const restoredSelectionRef = useRef(false)
+  const themePickerRef = useRef<HTMLDetailsElement | null>(null)
 
   const loadSaved = useCallback((item: SavedQuery) => {
     setSelectedQueryId(item.id)
@@ -216,9 +240,10 @@ function App() {
   }, [groupTokens])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
-    localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
-  }, [darkMode])
+    document.documentElement.dataset.theme = theme.mode
+    document.documentElement.dataset.palette = theme.palette
+    localStorage.setItem(THEME_KEY, `${theme.palette}-${theme.mode}`)
+  }, [theme])
 
   useEffect(() => {
     const requireAuthentication = () => {
@@ -848,7 +873,31 @@ function App() {
         </div>
         <div className="sidebar-footer">
           <div className="ai-state"><span className="status-dot" /> AI fallback disabled</div>
-          <button className="icon-button" onClick={() => setDarkMode((value) => !value)}>{darkMode ? <Sun size={17} /> : <Moon size={17} />}</button>
+          <details className="theme-picker" ref={themePickerRef}>
+            <summary className="icon-button" aria-label="Choose colour theme" title="Choose colour theme"><Palette size={17} /></summary>
+            <div className="theme-menu" role="menu" aria-label="Colour themes">
+              <div className="theme-menu-heading">
+                <strong>Colour theme</strong>
+                <span>{THEME_PALETTES.find((option) => option.value === theme.palette)?.label} · {theme.mode}</span>
+              </div>
+              {THEME_PALETTES.map((palette) => <div className="theme-option" key={palette.value}>
+                <span className="theme-swatch" data-palette-option={palette.value} />
+                <span>{palette.label}</span>
+                {(['light', 'dark'] as ThemeMode[]).map((mode) => <button
+                  key={mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={theme.palette === palette.value && theme.mode === mode}
+                  className={theme.palette === palette.value && theme.mode === mode ? 'active' : ''}
+                  onClick={() => {
+                    setTheme({ palette: palette.value, mode })
+                    themePickerRef.current?.removeAttribute('open')
+                  }}
+                  title={`${palette.label} ${mode}`}
+                >{mode === 'light' ? <Sun size={14} /> : <Moon size={14} />}<span>{mode}</span></button>)}
+              </div>)}
+            </div>
+          </details>
         </div>
       </aside>
 
