@@ -74,7 +74,6 @@ async def require_app_authentication(request, call_next):
         return JSONResponse(
             status_code=401,
             content={"detail": "Sign in to Ossy's API Hub"},
-            headers={"WWW-Authenticate": 'Basic realm="Ossys API Hub"'},
         )
     return await call_next(request)
 

@@ -17,7 +17,8 @@ def test_api_authentication_protects_data_routes(monkeypatch) -> None:
     assert client.get("/api/health").status_code == 200
     unauthorized = client.get("/api/saved-query-groups")
     assert unauthorized.status_code == 401
-    assert unauthorized.headers["www-authenticate"].startswith("Basic")
+    assert unauthorized.json() == {"detail": "Sign in to Ossy's API Hub"}
+    assert "www-authenticate" not in unauthorized.headers
 
     authorized = client.get(
         "/api/saved-query-groups",
