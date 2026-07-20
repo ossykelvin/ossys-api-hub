@@ -240,19 +240,6 @@ export async function putSavedQueryGroups(groups: string[]) {
 }
 
 export async function downloadExport(payload: Record<string, unknown>, filename: string) {
-  const response = await authorizedFetch(`${API_BASE_URL}/api/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) throw new Error(await errorMessage(response))
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const { downloadClientExport } = await import('./clientExport')
+  await downloadClientExport(payload as unknown as import('./clientExport').ClientExportPayload, filename)
 }
