@@ -64,18 +64,25 @@
   --code-text: #d9f0dd;
 }
 :root[data-palette="leaf"][data-theme="dark"] {
+  --bg: #07120a;
+  --panel: #0d1f12;
+  --panel-2: #12281a;
   --sidebar: #0a1b0f;
   --sidebar-end: #051008;
   --sidebar-soft: #17351f;
   --sidebar-hover: #214b2b;
+  --border: #294832;
+  --text: #e8f3e9;
+  --muted: #93aa98;
   --primary: #67ad43;
   --primary-hover: #57973a;
   --primary-soft: rgba(103, 173, 67, 0.17);
   --brand-end: #8ac466;
-  --input-bg: #102719;
-  --input-border: #2b5235;
+  --input-bg: #132d1c;
+  --input-border: #315b3b;
   --input-placeholder: #89a88f;
   --code: #07160c;
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
 }
 :root[data-palette="orange"] {
   --sidebar: #3c1d0c;
@@ -96,18 +103,25 @@
   --code-text: #ffe3cf;
 }
 :root[data-palette="orange"][data-theme="dark"] {
+  --bg: #160b05;
+  --panel: #221109;
+  --panel-2: #2d190f;
   --sidebar: #231108;
   --sidebar-end: #140904;
   --sidebar-soft: #482713;
   --sidebar-hover: #67371c;
+  --border: #58351f;
+  --text: #f9ece4;
+  --muted: #bea18e;
   --primary: #d96822;
   --primary-hover: #b95016;
   --primary-soft: rgba(217, 104, 34, 0.17);
   --brand-end: #ed9454;
-  --input-bg: #2c180d;
-  --input-border: #60391f;
+  --input-bg: #321c10;
+  --input-border: #6b4227;
   --input-placeholder: #b3927a;
-  --code: #1d0d06;
+  --code: #170a04;
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
 }
 :root[data-palette="monochrome"] {
   --sidebar: #202024;
@@ -166,18 +180,25 @@
   --code-text: #f7dce5;
 }
 :root[data-palette="burgundy"][data-theme="dark"] {
+  --bg: #16050b;
+  --panel: #230b14;
+  --panel-2: #2f111d;
   --sidebar: #250812;
   --sidebar-end: #130309;
   --sidebar-soft: #451124;
   --sidebar-hover: #641a35;
+  --border: #5b2d3c;
+  --text: #f7e8ed;
+  --muted: #b99ba5;
   --primary: #b83860;
   --primary-hover: #992a4d;
   --primary-soft: rgba(184, 56, 96, 0.18);
   --brand-end: #d96889;
-  --input-bg: #2c101a;
-  --input-border: #633047;
+  --input-bg: #341420;
+  --input-border: #6b354a;
   --input-placeholder: #b28a98;
   --code: #19050c;
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
 }
 
 .authentication-overlay {
