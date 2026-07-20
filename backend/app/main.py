@@ -35,7 +35,13 @@ from app.services.api_documentation import (
 )
 from app.services.rest_client import execute_rest_paginated, resolve_endpoint_parameters
 from app.services.saved_query_groups import load_saved_query_groups, save_saved_query_groups
-from app.services.saved_queries import load_saved_queries, save_saved_queries
+from app.services.saved_queries import (
+    delete_saved_query,
+    load_saved_queries,
+    merge_saved_queries,
+    save_saved_queries,
+    upsert_saved_query,
+)
 
 
 app = FastAPI(title="Ossy's API Hub", version="0.2.0")
@@ -98,9 +104,29 @@ async def get_saved_queries() -> list[dict[str, Any]]:
 @app.put("/api/saved-queries")
 async def put_saved_queries(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     try:
-        return save_saved_queries(queries)
+        merged = merge_saved_queries(load_saved_queries(), queries)
+        return save_saved_queries(merged)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not save queries: {exc}") from exc
+
+
+@app.put("/api/saved-queries/{query_id}")
+async def put_saved_query(query_id: str, query: dict[str, Any]) -> dict[str, Any]:
+    if not query_id or str(query.get("id", "")) != query_id:
+        raise HTTPException(status_code=422, detail="Saved query id must match the URL")
+    try:
+        return upsert_saved_query(query)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save query: {exc}") from exc
+
+
+@app.delete("/api/saved-queries/{query_id}", status_code=204)
+async def remove_saved_query(query_id: str) -> Response:
+    try:
+        delete_saved_query(query_id)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not delete query: {exc}") from exc
+    return Response(status_code=204)
 
 
 def _saved_query(query_id: str) -> dict[str, Any]:

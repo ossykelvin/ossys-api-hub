@@ -2,7 +2,13 @@ import json
 
 import pytest
 
-from app.services.saved_queries import load_saved_queries, save_saved_queries
+from app.services.saved_queries import (
+    delete_saved_query,
+    load_saved_queries,
+    merge_saved_queries,
+    save_saved_queries,
+    upsert_saved_query,
+)
 
 
 def test_saved_queries_survive_separate_load(tmp_path):
@@ -37,3 +43,24 @@ def test_invalid_saved_query_store_reports_an_error(tmp_path):
 
     with pytest.raises(ValueError, match="Could not read saved queries"):
         load_saved_queries(store_path)
+
+
+def test_catalogue_merge_does_not_delete_queries_missing_from_stale_client():
+    current = [
+        {"id": "one", "name": "Current", "updatedAt": "2026-07-20T12:00:00Z"},
+        {"id": "two", "name": "Preserved", "updatedAt": "2026-07-20T12:00:00Z"},
+    ]
+    stale = [{"id": "one", "name": "Stale", "updatedAt": "2026-07-19T12:00:00Z"}]
+
+    assert merge_saved_queries(current, stale) == current
+
+
+def test_single_query_upsert_and_delete_preserve_other_queries(tmp_path):
+    store_path = tmp_path / "saved_queries.json"
+    save_saved_queries([{"id": "one"}, {"id": "two"}], store_path)
+
+    upsert_saved_query({"id": "one", "name": "Updated"}, store_path)
+    assert load_saved_queries(store_path) == [{"id": "one", "name": "Updated"}, {"id": "two"}]
+
+    delete_saved_query("one", store_path)
+    assert load_saved_queries(store_path) == [{"id": "two"}]

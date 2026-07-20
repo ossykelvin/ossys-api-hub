@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import './App.css'
 import {
-  downloadExport, getQueryDocumentation, getSavedQueries, getSavedQueryGroups, importOpenApiTemplates,
-  putSavedQueries, putSavedQueryGroups,
+  deleteSavedQuery, downloadExport, getQueryDocumentation, getSavedQueries, getSavedQueryGroups, importOpenApiTemplates,
+  putSavedQueries, putSavedQuery, putSavedQueryGroups,
   refreshQueryDocumentation, runGraphQL, runRest, testConnection, testRestConnection,
 } from './lib/api'
 import {
@@ -93,18 +93,6 @@ function findAccessToken(pages: unknown[]): string | null {
     if (typeof candidate === 'string' && candidate.trim()) return candidate
   }
   return null
-}
-
-function mergeSavedQueries(local: SavedQuery[], remote: SavedQuery[]): SavedQuery[] {
-  const merged = new Map<string, SavedQuery>()
-  for (const item of [...remote, ...local]) {
-    const normalizedItem = { ...item, group: normalizedGroup(item.group) }
-    const current = merged.get(item.id)
-    if (!current || Date.parse(normalizedItem.updatedAt) >= Date.parse(current.updatedAt)) {
-      merged.set(normalizedItem.id, normalizedItem)
-    }
-  }
-  return Array.from(merged.values()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
 function normalizedGroup(value: unknown): string {
@@ -268,15 +256,12 @@ function App() {
 
   useEffect(() => {
     let active = true
-    const localQueries = loadSavedQueries(localStorage.getItem(SAVED_KEY))
     getSavedQueries()
-      .then(async (remoteQueries) => {
+      .then((remoteQueries) => {
         if (!active) return
-        const mergedQueries = mergeSavedQueries(localQueries, remoteQueries)
-        setSavedQueries(mergedQueries)
-        cacheSavedQueries(mergedQueries)
-        await putSavedQueries(mergedQueries)
-        if (active) setSavedQueriesReady(true)
+        setSavedQueries(remoteQueries)
+        cacheSavedQueries(remoteQueries)
+        setSavedQueriesReady(true)
       })
       .catch((caught: Error) => {
         if (!active) return
@@ -305,9 +290,6 @@ function App() {
   useEffect(() => {
     if (!savedQueriesReady) return
     cacheSavedQueries(savedQueries)
-    putSavedQueries(savedQueries).catch((caught: Error) => {
-      setError(`Saved queries could not be persisted: ${caught.message}`)
-    })
   }, [savedQueries, savedQueriesReady])
 
   useEffect(() => {
@@ -429,7 +411,7 @@ function App() {
     })
   }
 
-  function moveSavedQuery(queryId: string, destinationGroup: string) {
+  async function moveSavedQuery(queryId: string, destinationGroup: string) {
     const group = normalizedGroup(destinationGroup)
     const savedQuery = savedQueries.find((item) => item.id === queryId)
     if (!savedQuery || group === ALL_GROUPS_VALUE || normalizedGroup(savedQuery.group) === group) {
@@ -437,7 +419,14 @@ function App() {
       return
     }
     const movedQuery = { ...savedQuery, group, updatedAt: new Date().toISOString() }
-    setSavedQueries((current) => current.map((item) => item.id === queryId ? movedQuery : item))
+    try {
+      await putSavedQuery(movedQuery)
+      setSavedQueries((current) => current.map((item) => item.id === queryId ? movedQuery : item))
+    } catch (caught) {
+      setError(`Saved query could not be moved: ${(caught as Error).message}`)
+      setSavedQueryContextMenu(null)
+      return
+    }
     if (selectedQueryId === queryId) {
       setQueryGroup(group)
       setToken(groupTokens[group] ?? '')
@@ -619,10 +608,7 @@ function App() {
     try {
       const group = normalizedGroup(queryGroup)
       const templates = (await importOpenApiTemplates(DEFAULT_OPENAPI_URL)).map((item) => ({ ...item, group }))
-      setSavedQueries((current) => {
-        const importedIds = new Set(templates.map((item) => item.id))
-        return [...templates, ...current.filter((item) => !importedIds.has(item.id))]
-      })
+      setSavedQueries(await putSavedQueries(templates))
       setStatus(`${templates.length} API templates imported`)
     } catch (caught) {
       setError((caught as Error).message)
@@ -683,7 +669,7 @@ function App() {
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
     const id = selectedQueryId ?? crypto.randomUUID()
     const item: SavedQuery = {
       id,
@@ -698,10 +684,29 @@ function App() {
       restBodyFormat,
       paginationLocation,
     }
-    setSavedQueries((current) => [item, ...current.filter((saved) => saved.id !== id)])
-    setQueryGroup(normalizedGroup(item.group))
-    setSelectedQueryId(id)
-    setStatus('Query saved')
+    setStatus('Saving query…')
+    setError('')
+    try {
+      await putSavedQuery(item)
+      setSavedQueries((current) => [item, ...current.filter((saved) => saved.id !== id)])
+      setQueryGroup(normalizedGroup(item.group))
+      setSelectedQueryId(id)
+      setStatus('Query saved')
+    } catch (caught) {
+      setError(`Query could not be saved: ${(caught as Error).message}`)
+      setStatus('Save failed')
+    }
+  }
+
+  async function handleDeleteSavedQuery(item: SavedQuery) {
+    try {
+      await deleteSavedQuery(item.id)
+      setSavedQueries((current) => current.filter((saved) => saved.id !== item.id))
+      if (selectedQueryId === item.id) setSelectedQueryId(null)
+      setStatus(`${item.name} deleted`)
+    } catch (caught) {
+      setError(`Saved query could not be deleted: ${(caught as Error).message}`)
+    }
   }
 
   async function handleExport(format: 'xlsx' | 'csv' | 'json') {
@@ -774,10 +779,7 @@ function App() {
                       <button
                         aria-label={`Delete ${item.name}`}
                         className="delete-button"
-                        onClick={() => {
-                          setSavedQueries((current) => current.filter((saved) => saved.id !== item.id))
-                          if (selectedQueryId === item.id) setSelectedQueryId(null)
-                        }}
+                        onClick={() => void handleDeleteSavedQuery(item)}
                       ><Trash2 size={14} /></button>
                     </div>
                   ))}
@@ -818,7 +820,7 @@ function App() {
               : destinationGroups.map((group) => <button
                 key={group}
                 role="menuitem"
-                onClick={() => moveSavedQuery(savedQuery.id, group)}
+                onClick={() => void moveSavedQuery(savedQuery.id, group)}
               ><FolderOpen size={14} /><span>{group}</span></button>)}
           </div>
         </div>
