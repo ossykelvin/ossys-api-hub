@@ -7,7 +7,13 @@ from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Any
 
-from app.services.state_store import database_enabled, load_json_state, save_json_state
+from app.services.state_store import (
+    database_enabled,
+    delete_json_array_item,
+    load_json_state,
+    save_json_state,
+    upsert_json_array_item,
+)
 
 
 _store_lock = Lock()
@@ -85,3 +91,75 @@ def save_saved_queries(
                 temporary_path.unlink(missing_ok=True)
 
     return queries
+
+
+def merge_saved_queries(
+    existing: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge an imported catalogue without allowing a stale client to delete records."""
+    merged = {str(item.get("id")): item for item in existing if item.get("id")}
+    for item in incoming:
+        item_id = str(item.get("id", ""))
+        if not item_id:
+            continue
+        current = merged.get(item_id)
+        if current is None or str(item.get("updatedAt", "")) >= str(current.get("updatedAt", "")):
+            merged[item_id] = item
+    return sorted(merged.values(), key=lambda item: str(item.get("updatedAt", "")), reverse=True)
+
+
+def upsert_saved_query(query: dict[str, Any], path: Path | None = None) -> dict[str, Any]:
+    query_id = str(query.get("id", ""))
+    if not query_id:
+        raise ValueError("Saved query must have a non-empty id")
+    if path is None and database_enabled():
+        upsert_json_array_item("saved_queries", query)
+        return query
+
+    store_path = path or saved_queries_path()
+    with _store_lock:
+        existing = _load_queries_file_unlocked(store_path) if store_path.exists() else []
+        updated = [query, *(item for item in existing if str(item.get("id")) != query_id)]
+        _save_queries_file_unlocked(store_path, updated)
+    return query
+
+
+def delete_saved_query(query_id: str, path: Path | None = None) -> None:
+    if path is None and database_enabled():
+        delete_json_array_item("saved_queries", query_id)
+        return
+
+    store_path = path or saved_queries_path()
+    with _store_lock:
+        existing = _load_queries_file_unlocked(store_path) if store_path.exists() else []
+        updated = [item for item in existing if str(item.get("id")) != query_id]
+        _save_queries_file_unlocked(store_path, updated)
+
+
+def _load_queries_file_unlocked(store_path: Path) -> list[dict[str, Any]]:
+    try:
+        value = json.loads(store_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read saved queries: {exc}") from exc
+    if not isinstance(value, list):
+        raise ValueError("Saved query store must contain a JSON array")
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _save_queries_file_unlocked(store_path: Path, queries: list[dict[str, Any]]) -> None:
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(queries, indent=2, ensure_ascii=False)
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=store_path.parent,
+            prefix=f".{store_path.name}.", suffix=".tmp", delete=False,
+        ) as temporary_file:
+            temporary_file.write(serialized)
+            temporary_file.write("\n")
+            temporary_path = Path(temporary_file.name)
+        temporary_path.replace(store_path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
