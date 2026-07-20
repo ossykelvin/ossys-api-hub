@@ -6,7 +6,8 @@ import {
 } from 'lucide-react'
 import './App.css'
 import {
-  deleteSavedQuery, downloadExport, getQueryDocumentation, getSavedQueries, getSavedQueryGroups, importOpenApiTemplates,
+  AUTH_REQUIRED_EVENT, cancelAuthorization, deleteSavedQuery, downloadExport, getQueryDocumentation, getSavedQueries,
+  getSavedQueryGroups, importOpenApiTemplates, provideAuthorization,
   putSavedQueries, putSavedQuery, putSavedQueryGroups,
   refreshQueryDocumentation, runGraphQL, runRest, testConnection, testRestConnection,
 } from './lib/api'
@@ -144,6 +145,9 @@ function DocumentationInputFields({ fields }: { fields: ApiDocumentationInputFie
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(THEME_KEY) !== 'light')
+  const [authenticationOpen, setAuthenticationOpen] = useState(false)
+  const [authenticationUsername, setAuthenticationUsername] = useState('ossy')
+  const [authenticationPassword, setAuthenticationPassword] = useState('')
   const [apiMode, setApiMode] = useState<ApiMode>('graphql')
   const [endpoint, setEndpoint] = useState('')
   const [queryGroup, setQueryGroup] = useState(() => sessionStorage.getItem(ACTIVE_GROUP_KEY) || DEFAULT_SAVED_QUERY_GROUP)
@@ -215,6 +219,29 @@ function App() {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
     localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
   }, [darkMode])
+
+  useEffect(() => {
+    const requireAuthentication = () => {
+      setAuthenticationPassword('')
+      setAuthenticationOpen(true)
+    }
+    window.addEventListener(AUTH_REQUIRED_EVENT, requireAuthentication)
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, requireAuthentication)
+  }, [])
+
+  function submitAuthentication(event: React.FormEvent) {
+    event.preventDefault()
+    if (!authenticationUsername.trim() || !authenticationPassword) return
+    provideAuthorization(authenticationUsername.trim(), authenticationPassword)
+    setAuthenticationPassword('')
+    setAuthenticationOpen(false)
+  }
+
+  function dismissAuthentication() {
+    cancelAuthorization()
+    setAuthenticationPassword('')
+    setAuthenticationOpen(false)
+  }
 
   useEffect(() => sessionStorage.setItem(GROUP_TOKENS_KEY, JSON.stringify(groupTokens)), [groupTokens])
 
@@ -744,6 +771,37 @@ function App() {
 
   return (
     <div className="app-shell">
+      {authenticationOpen && <div className="authentication-overlay" role="presentation">
+        <form className="authentication-dialog" onSubmit={submitAuthentication}>
+          <div className="authentication-icon"><KeyRound size={22} /></div>
+          <div>
+            <h2>Sign in to Ossy's API Hub</h2>
+            <p>Sign in to load and synchronize saved queries across browsers.</p>
+          </div>
+          <label>
+            <span>Username</span>
+            <input
+              autoFocus
+              autoComplete="username"
+              value={authenticationUsername}
+              onChange={(event) => setAuthenticationUsername(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Password</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={authenticationPassword}
+              onChange={(event) => setAuthenticationPassword(event.target.value)}
+            />
+          </label>
+          <div className="authentication-actions">
+            <button type="button" className="secondary-button" onClick={dismissAuthentication}>Cancel</button>
+            <button type="submit" className="primary-button" disabled={!authenticationUsername.trim() || !authenticationPassword}>Sign in</button>
+          </div>
+        </form>
+      </div>}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><Braces size={22} /></div>
