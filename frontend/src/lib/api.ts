@@ -4,20 +4,34 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
   ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 const AUTH_STORAGE_KEY = 'ossys-api-hub-basic-auth'
+export const AUTH_REQUIRED_EVENT = 'ossys-api-hub:authorization-required'
 let pendingAuthorization: Promise<string> | null = null
+let resolveAuthorization: ((authorization: string) => void) | null = null
+let rejectAuthorization: ((reason: Error) => void) | null = null
 
 function requestAuthorization(): Promise<string> {
   if (pendingAuthorization) return pendingAuthorization
-  pendingAuthorization = Promise.resolve().then(() => {
-    const username = window.prompt("Ossy's API Hub username", 'ossy')
-    if (username === null) throw new Error("Sign-in was cancelled")
-    const password = window.prompt("Ossy's API Hub password")
-    if (password === null) throw new Error("Sign-in was cancelled")
-    const authorization = `Basic ${window.btoa(`${username}:${password}`)}`
-    sessionStorage.setItem(AUTH_STORAGE_KEY, authorization)
-    return authorization
-  }).finally(() => { pendingAuthorization = null })
+  pendingAuthorization = new Promise<string>((resolve, reject) => {
+    resolveAuthorization = resolve
+    rejectAuthorization = reject
+    window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT))
+  }).finally(() => {
+    pendingAuthorization = null
+    resolveAuthorization = null
+    rejectAuthorization = null
+  })
   return pendingAuthorization
+}
+
+export function provideAuthorization(username: string, password: string) {
+  if (!resolveAuthorization) return
+  const authorization = `Basic ${window.btoa(`${username}:${password}`)}`
+  sessionStorage.setItem(AUTH_STORAGE_KEY, authorization)
+  resolveAuthorization(authorization)
+}
+
+export function cancelAuthorization() {
+  rejectAuthorization?.(new Error('Sign-in was cancelled'))
 }
 
 async function authorizedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -32,9 +46,11 @@ async function authorizedFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if (response.status !== 401) return response
 
   sessionStorage.removeItem(AUTH_STORAGE_KEY)
-  const authorization = await requestAuthorization()
-  response = await request(authorization)
-  if (!response.ok) sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  for (let attempt = 0; attempt < 2 && response.status === 401; attempt += 1) {
+    const authorization = await requestAuthorization()
+    response = await request(authorization)
+    if (response.status === 401) sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  }
   return response
 }
 
