@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.services.state_store import database_enabled, load_json_state, save_json_state
+
 
 _store_lock = Lock()
 _sensitive_key = re.compile(r"password|secret|authorization|access[_-]?token|refresh[_-]?token", re.I)
@@ -55,6 +57,18 @@ def documentation_path() -> Path:
 
 
 def load_documentation(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    if path is None and database_enabled():
+        value = load_json_state("api_documentation")
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("API documentation store must contain a JSON object")
+        return {
+            str(query_id): record
+            for query_id, record in value.items()
+            if isinstance(record, dict)
+        }
+
     store_path = path or documentation_path()
     with _store_lock:
         if not store_path.exists():
@@ -76,6 +90,10 @@ def save_documentation(
     documentation: dict[str, dict[str, Any]],
     path: Path | None = None,
 ) -> dict[str, dict[str, Any]]:
+    if path is None and database_enabled():
+        save_json_state("api_documentation", documentation)
+        return documentation
+
     store_path = path or documentation_path()
     store_path.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(documentation, indent=2, ensure_ascii=False)

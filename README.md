@@ -115,6 +115,28 @@ docker compose up --build
 
 Open `http://localhost:8000`.
 
+## Vercel and Supabase
+
+The hosted deployment uses Vercel Services: the Vite application is the `frontend`
+service and FastAPI is the `backend` service. Saved queries, groups and cached API
+documentation are stored in the private Supabase table created by the migration in
+`supabase/migrations`.
+
+Configure these Vercel environment variables for Production and Preview:
+
+```text
+DATABASE_URL=postgresql://...pooler.supabase.com:6543/postgres?sslmode=require
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+APP_USERNAME=ossy
+APP_PASSWORD=<strong-random-password>
+AI_ENABLED=false
+```
+
+Use the Supavisor transaction-pool connection string for `DATABASE_URL`. Never
+commit the database password or `APP_PASSWORD`. The browser retains the application
+login only for the current tab session.
+
 ## Configuring pagination
 
 For REST requests, query parameters and POST bodies are entered as JSON objects. Pagination variables can be added to either the query string or POST body. Leave the items path blank when the REST response is a root-level JSON array.

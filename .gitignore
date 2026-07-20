@@ -13,3 +13,6 @@ tmp/
 backend/data/saved_queries.json
 backend/data/saved_query_groups.json
 backend/data/api_documentation.json
+
+.vercel/
+.env*

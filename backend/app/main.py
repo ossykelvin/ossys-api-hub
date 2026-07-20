@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
+import base64
+import binascii
+import secrets
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
@@ -35,7 +38,39 @@ from app.services.saved_query_groups import load_saved_query_groups, save_saved_
 from app.services.saved_queries import load_saved_queries, save_saved_queries
 
 
-app = FastAPI(title="GraphQL Hub API", version="0.1.0")
+app = FastAPI(title="Ossy's API Hub", version="0.2.0")
+
+
+@app.middleware("http")
+async def require_app_authentication(request, call_next):
+    expected_password = os.getenv("APP_PASSWORD", "")
+    if (
+        not expected_password
+        or not request.url.path.startswith("/api/")
+        or request.url.path == "/api/health"
+    ):
+        return await call_next(request)
+
+    expected_username = os.getenv("APP_USERNAME", "ossy")
+    authorization = request.headers.get("Authorization", "")
+    username = password = ""
+    if authorization.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except (binascii.Error, ValueError, UnicodeDecodeError):
+            pass
+
+    if not (
+        secrets.compare_digest(username, expected_username)
+        and secrets.compare_digest(password, expected_password)
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Sign in to Ossy's API Hub"},
+            headers={"WWW-Authenticate": 'Basic realm="Ossys API Hub"'},
+        )
+    return await call_next(request)
 
 frontend_origins = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",") if origin.strip()]
 app.add_middleware(

@@ -3,6 +3,31 @@ import type { ApiDocumentation, PaginationConfig, RestBodyFormat, RestMethod, Ru
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
   ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
+const AUTH_STORAGE_KEY = 'ossys-api-hub-basic-auth'
+
+async function authorizedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const request = async (authorization?: string | null) => {
+    const headers = new Headers(init?.headers)
+    if (authorization) headers.set('Authorization', authorization)
+    return fetch(input, { ...init, headers })
+  }
+
+  const savedAuthorization = sessionStorage.getItem(AUTH_STORAGE_KEY)
+  let response = await request(savedAuthorization)
+  if (response.status !== 401) return response
+
+  sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  const username = window.prompt("Ossy's API Hub username", 'ossy')
+  if (username === null) throw new Error("Sign-in was cancelled")
+  const password = window.prompt("Ossy's API Hub password")
+  if (password === null) throw new Error("Sign-in was cancelled")
+
+  const authorization = `Basic ${window.btoa(`${username}:${password}`)}`
+  response = await request(authorization)
+  if (response.ok) sessionStorage.setItem(AUTH_STORAGE_KEY, authorization)
+  return response
+}
+
 function formatApiError(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null
   const candidate = body as { detail?: unknown; message?: unknown }
@@ -40,7 +65,7 @@ export async function runGraphQL(input: {
   timeout_seconds: number
   verify_ssl: boolean
 }, signal?: AbortSignal): Promise<RunResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/run`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -63,7 +88,7 @@ export async function runRest(input: {
   timeout_seconds: number
   verify_ssl: boolean
 }, signal?: AbortSignal): Promise<RunResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/rest/run`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rest/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -80,7 +105,7 @@ export async function testConnection(input: {
   timeout_seconds: number
   verify_ssl: boolean
 }) {
-  const response = await fetch(`${API_BASE_URL}/api/test-connection`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/test-connection`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -100,7 +125,7 @@ export async function testRestConnection(input: {
   timeout_seconds: number
   verify_ssl: boolean
 }) {
-  const response = await fetch(`${API_BASE_URL}/api/rest/test-connection`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/rest/test-connection`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -110,7 +135,7 @@ export async function testRestConnection(input: {
 }
 
 export async function importOpenApiTemplates(url: string) {
-  const response = await fetch(`${API_BASE_URL}/api/openapi/templates`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/openapi/templates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -120,13 +145,13 @@ export async function importOpenApiTemplates(url: string) {
 }
 
 export async function getSavedQueries() {
-  const response = await fetch(`${API_BASE_URL}/api/saved-queries`)
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-queries`)
   if (!response.ok) throw new Error(await errorMessage(response))
   return response.json() as Promise<SavedQuery[]>
 }
 
 export async function putSavedQueries(queries: SavedQuery[]) {
-  const response = await fetch(`${API_BASE_URL}/api/saved-queries`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-queries`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(queries),
@@ -136,7 +161,7 @@ export async function putSavedQueries(queries: SavedQuery[]) {
 }
 
 export async function getQueryDocumentation(queryId: string) {
-  const response = await fetch(`${API_BASE_URL}/api/saved-queries/${encodeURIComponent(queryId)}/documentation`)
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-queries/${encodeURIComponent(queryId)}/documentation`)
   if (!response.ok) throw new Error(await errorMessage(response))
   return response.json() as Promise<ApiDocumentation>
 }
@@ -146,7 +171,7 @@ export async function refreshQueryDocumentation(queryId: string, input: {
   timeout_seconds: number
   verify_ssl: boolean
 }) {
-  const response = await fetch(`${API_BASE_URL}/api/saved-queries/${encodeURIComponent(queryId)}/documentation/refresh`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-queries/${encodeURIComponent(queryId)}/documentation/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -156,13 +181,13 @@ export async function refreshQueryDocumentation(queryId: string, input: {
 }
 
 export async function getSavedQueryGroups() {
-  const response = await fetch(`${API_BASE_URL}/api/saved-query-groups`)
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-query-groups`)
   if (!response.ok) throw new Error(await errorMessage(response))
   return response.json() as Promise<string[]>
 }
 
 export async function putSavedQueryGroups(groups: string[]) {
-  const response = await fetch(`${API_BASE_URL}/api/saved-query-groups`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/saved-query-groups`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(groups),
@@ -172,7 +197,7 @@ export async function putSavedQueryGroups(groups: string[]) {
 }
 
 export async function downloadExport(payload: Record<string, unknown>, filename: string) {
-  const response = await fetch(`${API_BASE_URL}/api/export`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/export`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
