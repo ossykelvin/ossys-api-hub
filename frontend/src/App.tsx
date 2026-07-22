@@ -261,7 +261,7 @@ function App() {
   const [destructiveChallengeConfirmed, setDestructiveChallengeConfirmed] = useState(false)
   const [apiMode, setApiMode] = useState<ApiMode>('graphql')
   const [endpoint, setEndpoint] = useState('')
-  const [queryGroup, setQueryGroup] = useState(() => sessionStorage.getItem(ACTIVE_GROUP_KEY) || DEFAULT_SAVED_QUERY_GROUP)
+  const [queryGroup, setQueryGroup] = useState(() => sessionStorage.getItem(ACTIVE_GROUP_KEY) || ALL_GROUPS_VALUE)
   const [queryGroups, setQueryGroups] = useState<string[]>([ALL_GROUPS_VALUE, DEFAULT_SAVED_QUERY_GROUP])
   const [queryGroupsReady, setQueryGroupsReady] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
