@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, Braces, CheckCircle2, ChevronDown, ChevronRight, CircleStop, Clock3, Copy, Database, Download,
   ExternalLink, FileJson, FileSpreadsheet, FolderOpen, KeyRound, Layers3, LoaderCircle, Moon, Palette, Play,
-  Plus, RefreshCw, Save, Search, Settings2, Sun, Table2, Trash2, Wifi, XCircle,
+  Plus, RefreshCw, Save, Search, Settings2, ShieldAlert, Sun, Table2, Trash2, Wifi, XCircle,
 } from 'lucide-react'
 import './App.css'
 import {
@@ -109,6 +109,28 @@ type SavedQueryContextMenu = {
   y: number
 }
 
+type DestructiveChallenge = {
+  action: string
+  code: string
+  endpoint: string
+}
+
+const DESTRUCTIVE_REST_METHODS = new Set<RestMethod>(['POST', 'PUT', 'PATCH', 'DELETE', 'COPY'])
+
+function isGraphQLMutation(query: string): boolean {
+  const executableText = query
+    .replace(/"""[\s\S]*?"""/g, ' ')
+    .replace(/"(?:\\.|[^"\\])*"/g, ' ')
+    .replace(/#[^\n\r]*/g, ' ')
+  return /\bmutation\b/i.test(executableText)
+}
+
+function createChallengeCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const values = crypto.getRandomValues(new Uint8Array(4))
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join('')
+}
+
 function findAccessToken(pages: unknown[]): string | null {
   for (const page of pages) {
     if (!page || typeof page !== 'object' || Array.isArray(page)) continue
@@ -171,6 +193,9 @@ function App() {
   const [authenticationOpen, setAuthenticationOpen] = useState(false)
   const [authenticationUsername, setAuthenticationUsername] = useState('ossy')
   const [authenticationPassword, setAuthenticationPassword] = useState('')
+  const [destructiveChallenge, setDestructiveChallenge] = useState<DestructiveChallenge | null>(null)
+  const [destructiveChallengeInput, setDestructiveChallengeInput] = useState('')
+  const [destructiveChallengeConfirmed, setDestructiveChallengeConfirmed] = useState(false)
   const [apiMode, setApiMode] = useState<ApiMode>('graphql')
   const [endpoint, setEndpoint] = useState('')
   const [queryGroup, setQueryGroup] = useState(() => sessionStorage.getItem(ACTIVE_GROUP_KEY) || DEFAULT_SAVED_QUERY_GROUP)
@@ -215,6 +240,7 @@ function App() {
   const [documentationRefreshing, setDocumentationRefreshing] = useState(false)
   const [documentationError, setDocumentationError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const destructiveChallengeResolverRef = useRef<((confirmed: boolean) => void) | null>(null)
   const restoredSelectionRef = useRef(false)
   const themePickerRef = useRef<HTMLDetailsElement | null>(null)
 
@@ -268,6 +294,31 @@ function App() {
     setAuthenticationOpen(false)
   }
 
+  function finishDestructiveChallenge(confirmed: boolean) {
+    const resolve = destructiveChallengeResolverRef.current
+    destructiveChallengeResolverRef.current = null
+    setDestructiveChallenge(null)
+    setDestructiveChallengeInput('')
+    setDestructiveChallengeConfirmed(false)
+    resolve?.(confirmed)
+  }
+
+  function requestDestructiveConfirmation(action: string): Promise<boolean> {
+    if (destructiveChallengeResolverRef.current) return Promise.resolve(false)
+    return new Promise((resolve) => {
+      destructiveChallengeResolverRef.current = resolve
+      setDestructiveChallenge({ action, code: createChallengeCode(), endpoint: endpoint.trim() })
+      setDestructiveChallengeInput('')
+      setDestructiveChallengeConfirmed(false)
+    })
+  }
+
+  function destructiveAction(): string | null {
+    if (apiMode === 'rest' && DESTRUCTIVE_REST_METHODS.has(restMethod)) return `${restMethod} request`
+    if (apiMode === 'graphql' && isGraphQLMutation(query)) return 'GraphQL mutation'
+    return null
+  }
+
   useEffect(() => sessionStorage.setItem(GROUP_TOKENS_KEY, JSON.stringify(groupTokens)), [groupTokens])
 
   useEffect(() => sessionStorage.setItem(ACTIVE_GROUP_KEY, normalizedGroup(queryGroup)), [queryGroup])
@@ -305,6 +356,15 @@ function App() {
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [documentationOpen])
+
+  useEffect(() => {
+    if (!destructiveChallenge) return
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') finishDestructiveChallenge(false)
+    }
+    document.addEventListener('keydown', cancelOnEscape)
+    return () => document.removeEventListener('keydown', cancelOnEscape)
+  }, [destructiveChallenge])
 
   useEffect(() => {
     let active = true
@@ -671,13 +731,24 @@ function App() {
   async function handleRun() {
     setError('')
     try {
+      let executeRequest: (signal: AbortSignal) => Promise<RunResponse>
+      if (apiMode === 'graphql') {
+        const request = buildGraphQLRequest()
+        executeRequest = (signal) => runGraphQL(request, signal)
+      } else {
+        const request = buildRestRequest()
+        executeRequest = (signal) => runRest(request, signal)
+      }
+      const action = destructiveAction()
+      if (action && !await requestDestructiveConfirmation(action)) {
+        setStatus(`${action} cancelled`)
+        return
+      }
       const controller = new AbortController()
       abortRef.current = controller
       setRunning(true)
       setStatus(pagination.page_count === 'all' ? 'Collecting all pages…' : 'Executing report…')
-      const response = apiMode === 'graphql'
-        ? await runGraphQL(buildGraphQLRequest(), controller.signal)
-        : await runRest(buildRestRequest(), controller.signal)
+      const response = await executeRequest(controller.signal)
       const capturedToken = apiMode === 'rest' ? findAccessToken(response.pages) : null
       if (capturedToken) setTokenForGroup(queryGroup, capturedToken)
       setResult(response)
@@ -699,20 +770,30 @@ function App() {
     setError('')
     try {
       const commonRequest = buildCommonRequest()
+      let executeTest: () => ReturnType<typeof testConnection>
+      if (apiMode === 'graphql') {
+        executeTest = () => testConnection({
+          ...commonRequest,
+          timeout_seconds: Math.min(timeoutSeconds, 120),
+        })
+      } else {
+        const request = {
+          ...commonRequest,
+          method: restMethod,
+          query_params: parseJsonObject(restParamsText, 'Query parameters'),
+          body: restMethod !== 'GET' ? parseJsonObject(restBodyText, 'Request body') : undefined,
+          body_format: restBodyFormat,
+          timeout_seconds: Math.min(timeoutSeconds, 120),
+        }
+        executeTest = () => testRestConnection(request)
+      }
+      const action = destructiveAction()
+      if (action && !await requestDestructiveConfirmation(action)) {
+        setStatus(`${action} test cancelled`)
+        return
+      }
       setConnectionStatus('testing')
-      const response = apiMode === 'graphql'
-        ? await testConnection({
-            ...commonRequest,
-            timeout_seconds: Math.min(timeoutSeconds, 120),
-          })
-        : await testRestConnection({
-            ...commonRequest,
-            method: restMethod,
-            query_params: parseJsonObject(restParamsText, 'Query parameters'),
-            body: restMethod !== 'GET' ? parseJsonObject(restBodyText, 'Request body') : undefined,
-            body_format: restBodyFormat,
-            timeout_seconds: Math.min(timeoutSeconds, 120),
-          })
+      const response = await executeTest()
       setConnectionStatus(response.ok ? 'ok' : 'failed')
       setStatus(response.message)
     } catch (caught) {
@@ -826,6 +907,59 @@ function App() {
             <button type="submit" className="primary-button" disabled={!authenticationUsername.trim() || !authenticationPassword}>Sign in</button>
           </div>
         </form>
+      </div>}
+      {destructiveChallenge && <div className="destructive-challenge-overlay" role="presentation">
+        <section
+          className="destructive-challenge-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="destructive-challenge-title"
+          aria-describedby="destructive-challenge-description"
+        >
+          <div className="destructive-challenge-icon"><ShieldAlert size={24} /></div>
+          <div>
+            <p className="destructive-challenge-eyebrow">Destructive operation</p>
+            <h2 id="destructive-challenge-title">Are you sure?</h2>
+            <p id="destructive-challenge-description">
+              This will send a <strong>{destructiveChallenge.action}</strong> to the API and may permanently change data.
+            </p>
+          </div>
+          <div className="destructive-challenge-target">
+            <span>Endpoint</span>
+            <code title={destructiveChallenge.endpoint}>{destructiveChallenge.endpoint}</code>
+          </div>
+          <label className="destructive-challenge-check">
+            <input
+              type="checkbox"
+              checked={destructiveChallengeConfirmed}
+              onChange={(event) => setDestructiveChallengeConfirmed(event.target.checked)}
+            />
+            <span>I’m sure I want to send this {destructiveChallenge.action}.</span>
+          </label>
+          <label className="destructive-challenge-code-field">
+            <span>Type <code>{destructiveChallenge.code}</code> to continue</span>
+            <input
+              autoFocus
+              autoComplete="off"
+              maxLength={4}
+              value={destructiveChallengeInput}
+              onChange={(event) => setDestructiveChallengeInput(event.target.value.toUpperCase())}
+              onPaste={(event) => event.preventDefault()}
+              aria-label="Four-character confirmation code"
+            />
+          </label>
+          <div className="destructive-challenge-actions">
+            <button type="button" className="secondary-button" onClick={() => finishDestructiveChallenge(false)}>Cancel</button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={!destructiveChallengeConfirmed || destructiveChallengeInput !== destructiveChallenge.code}
+              onClick={() => finishDestructiveChallenge(true)}
+            >
+              <ShieldAlert size={16} /> Execute request
+            </button>
+          </div>
+        </section>
       </div>}
       <aside className="sidebar">
         <div className="brand">
