@@ -426,6 +426,9 @@ button:not(:disabled):active { color: var(--primary-contrast) !important; backgr
 .field { display: grid; gap: 7px; }
 .field > span, .split-editors label > span { color: var(--muted); font-size: 11px; font-weight: 750; }
 .memory-badge { margin-left: 5px; padding: 2px 6px; color: var(--success); background: rgba(14,159,110,.1); border-radius: 999px; font-size: 9px; font-style: normal; }
+.token-expiry-badge { margin-left: 5px; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px; color: var(--primary); background: var(--primary-soft); border-radius: 999px; font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
+.token-expiry-badge.expired { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.token-expiry-badge.unknown { color: var(--muted); background: var(--panel-2); }
 .field input, .field select, .query-name-input { width: 100%; height: 39px; border: 1px solid var(--input-border); border-radius: 8px; outline: 0; color: var(--text); background: var(--input-bg); padding: 0 10px; font-size: 12px; }
 .field input:focus, .field select:focus, .query-name-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .field input::placeholder, .query-name-input::placeholder, .input-with-icon input::placeholder, .authentication-dialog input::placeholder { color: var(--input-placeholder); }
