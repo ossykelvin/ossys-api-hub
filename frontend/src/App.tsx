@@ -205,10 +205,7 @@ function App() {
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [groupTokens, setGroupTokens] = useState<Record<string, string>>(loadGroupTokens)
-  const [token, setToken] = useState(() => {
-    const activeGroup = sessionStorage.getItem(ACTIVE_GROUP_KEY) || DEFAULT_SAVED_QUERY_GROUP
-    return loadGroupTokens()[activeGroup] ?? ''
-  })
+  const token = groupTokens[normalizedGroup(queryGroup)] ?? ''
   const [showToken, setShowToken] = useState(false)
   const [queryName, setQueryName] = useState('Untitled report')
   const [query, setQuery] = useState(defaultQuery)
@@ -250,7 +247,6 @@ function App() {
     const group = normalizedGroup(item.group)
     setApiMode(savedApiMode)
     setQueryGroup(group)
-    setToken(groupTokens[group] ?? '')
     setQueryName(item.name)
     setEndpoint(item.endpoint)
     setQuery(item.query)
@@ -263,7 +259,7 @@ function App() {
     setPaginationLocation(item.paginationLocation ?? 'query')
     setPagination({ ...(savedApiMode === 'graphql' ? defaultPagination : defaultRestPagination), ...item.pagination })
     setStatus(`Loaded ${item.name}`)
-  }, [groupTokens])
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme.mode
@@ -463,6 +459,11 @@ function App() {
       : groupedSaved.filter(([group]) => group === normalizedGroup(queryGroup)),
     [groupedSaved, queryGroup],
   )
+  const sectionEndpointCount = useMemo(() => {
+    const group = normalizedGroup(queryGroup)
+    if (group === ALL_GROUPS_VALUE) return 0
+    return savedQueries.filter((item) => normalizedGroup(item.group) === group).length
+  }, [queryGroup, savedQueries])
 
   function updatePagination<K extends keyof PaginationConfig>(key: K, value: PaginationConfig[K]) {
     setPagination((current) => ({ ...current, [key]: value }))
@@ -476,7 +477,6 @@ function App() {
       delete next[normalized]
       return next
     })
-    setToken(value)
   }
 
   function handleGroupChange(value: string) {
@@ -493,7 +493,6 @@ function App() {
       return
     }
     setQueryGroup(group)
-    setToken(groupTokens[group] ?? '')
     setSelectedQueryId(null)
     setQueryName('Untitled report')
     setEndpoint('')
@@ -541,7 +540,6 @@ function App() {
     }
     if (selectedQueryId === queryId) {
       setQueryGroup(group)
-      setToken(groupTokens[group] ?? '')
       setExpandedGroups(new Set([group]))
     }
     setSavedQueryContextMenu(null)
@@ -755,7 +753,9 @@ function App() {
       setResultTab(response.errors.length > 0 ? 'errors' : 'json')
       setStatus(
         `${response.record_count.toLocaleString()} records from ${response.page_count} page${response.page_count === 1 ? '' : 's'}`
-        + (capturedToken ? ' · session token captured' : ''),
+        + (capturedToken
+          ? ` · token federated to ${sectionEndpointCount.toLocaleString()} API${sectionEndpointCount === 1 ? '' : 's'} in ${normalizedGroup(queryGroup)}`
+          : ''),
       )
     } catch (caught) {
       if ((caught as Error).name === 'AbortError') setStatus('Execution cancelled')
@@ -1118,7 +1118,7 @@ function App() {
           <div className="card-title"><div><Wifi size={18} /><span>Connection</span></div><span className={`connection-chip ${connectionStatus}`}>{connectionStatus === 'ok' ? 'Connected' : connectionStatus === 'testing' ? 'Testing…' : connectionStatus === 'failed' ? 'Failed' : 'Not tested'}</span></div>
           <div className="connection-grid">
             <label className="field wide"><span>Endpoint URL</span><div className="input-with-icon"><Database size={16} /><input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={apiMode === 'graphql' ? 'https://api.example.com/graphql' : 'https://api.example.com/v1/items'} /></div></label>
-            <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} session</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Captured for this group or enter manually" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
+            <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} · {sectionEndpointCount} APIs</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Federated to every API in this section" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
             <button className="secondary-button test-button" onClick={handleTest} disabled={connectionStatus === 'testing'}>{connectionStatus === 'testing' ? <LoaderCircle className="spin" size={16} /> : <Wifi size={16} />} Test</button>
           </div>
         </section>
