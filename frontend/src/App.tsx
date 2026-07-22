@@ -72,6 +72,7 @@ const defaultRestPagination: PaginationConfig = {
 const SAVED_KEY = 'graphql-hub.saved-queries.v1'
 const THEME_KEY = 'graphql-hub.theme'
 const GROUP_TOKENS_KEY = 'graphql-hub.group-tokens.v1'
+const GROUP_TOKEN_EXPIRIES_KEY = 'graphql-hub.group-token-expiries.v1'
 const SELECTED_QUERY_KEY = 'graphql-hub.selected-query.v1'
 const ACTIVE_GROUP_KEY = 'graphql-hub.active-group.v1'
 const ADD_GROUP_VALUE = '__add_group__'
@@ -115,6 +116,11 @@ type DestructiveChallenge = {
   endpoint: string
 }
 
+type CapturedAccessToken = {
+  value: string
+  expiresAt: number | null
+}
+
 const DESTRUCTIVE_REST_METHODS = new Set<RestMethod>(['POST', 'PUT', 'PATCH', 'DELETE', 'COPY'])
 
 function isGraphQLMutation(query: string): boolean {
@@ -131,14 +137,59 @@ function createChallengeCode(): string {
   return Array.from(values, (value) => alphabet[value % alphabet.length]).join('')
 }
 
-function findAccessToken(pages: unknown[]): string | null {
+function jwtExpiry(token: string): number | null {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=')
+    const parsed: unknown = JSON.parse(atob(base64))
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return null
+    const exp = Number((parsed as Record<string, unknown>).exp)
+    return Number.isFinite(exp) && exp > 0 ? exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+function responseTokenExpiry(response: Record<string, unknown>, token: string): number | null {
+  const expiresIn = Number(response.expires_in ?? response.expiresIn)
+  if (Number.isFinite(expiresIn) && expiresIn > 0) return Date.now() + expiresIn * 1000
+
+  const expiresAt = response.expires_at ?? response.expiresAt
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    return expiresAt > 1_000_000_000_000 ? expiresAt : expiresAt * 1000
+  }
+  if (typeof expiresAt === 'string' && expiresAt.trim()) {
+    const numeric = Number(expiresAt)
+    if (Number.isFinite(numeric)) return numeric > 1_000_000_000_000 ? numeric : numeric * 1000
+    const parsed = Date.parse(expiresAt)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return jwtExpiry(token)
+}
+
+function findAccessToken(pages: unknown[]): CapturedAccessToken | null {
   for (const page of pages) {
     if (!page || typeof page !== 'object' || Array.isArray(page)) continue
     const response = page as Record<string, unknown>
     const candidate = response.access_token ?? response.accessToken ?? response.token
-    if (typeof candidate === 'string' && candidate.trim()) return candidate
+    if (typeof candidate === 'string' && candidate.trim()) {
+      const value = candidate.trim()
+      return { value, expiresAt: responseTokenExpiry(response, value) }
+    }
   }
   return null
+}
+
+function formatTokenCountdown(expiresAt: number, currentTime: number): string {
+  const totalSeconds = Math.max(0, Math.ceil((expiresAt - currentTime) / 1000))
+  if (totalSeconds === 0) return 'Expired'
+  const days = Math.floor(totalSeconds / 86_400)
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600)
+  const minutes = Math.floor((totalSeconds % 3_600) / 60)
+  const seconds = totalSeconds % 60
+  const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':')
+  return days > 0 ? `${days}d ${clock}` : clock
 }
 
 function normalizedGroup(value: unknown): string {
@@ -152,6 +203,18 @@ function loadGroupTokens(): Record<string, string> {
     return Object.fromEntries(
       Object.entries(stored).filter(([group, value]) => group.trim() && typeof value === 'string'),
     ) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function loadGroupTokenExpiries(): Record<string, number> {
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(GROUP_TOKEN_EXPIRIES_KEY) || '{}')
+    if (!stored || Array.isArray(stored) || typeof stored !== 'object') return {}
+    return Object.fromEntries(
+      Object.entries(stored).filter(([group, value]) => group.trim() && typeof value === 'number' && Number.isFinite(value)),
+    ) as Record<string, number>
   } catch {
     return {}
   }
@@ -205,7 +268,14 @@ function App() {
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [groupTokens, setGroupTokens] = useState<Record<string, string>>(loadGroupTokens)
-  const token = groupTokens[normalizedGroup(queryGroup)] ?? ''
+  const [groupTokenExpiries, setGroupTokenExpiries] = useState<Record<string, number>>(loadGroupTokenExpiries)
+  const [tokenClock, setTokenClock] = useState(Date.now)
+  const activeTokenGroup = normalizedGroup(queryGroup)
+  const token = groupTokens[activeTokenGroup] ?? ''
+  const tokenExpiresAt = useMemo(
+    () => groupTokenExpiries[activeTokenGroup] ?? (token ? jwtExpiry(token) : null),
+    [activeTokenGroup, groupTokenExpiries, token],
+  )
   const [showToken, setShowToken] = useState(false)
   const [queryName, setQueryName] = useState('Untitled report')
   const [query, setQuery] = useState(defaultQuery)
@@ -316,6 +386,15 @@ function App() {
   }
 
   useEffect(() => sessionStorage.setItem(GROUP_TOKENS_KEY, JSON.stringify(groupTokens)), [groupTokens])
+
+  useEffect(() => sessionStorage.setItem(GROUP_TOKEN_EXPIRIES_KEY, JSON.stringify(groupTokenExpiries)), [groupTokenExpiries])
+
+  useEffect(() => {
+    if (!tokenExpiresAt) return
+    setTokenClock(Date.now())
+    const timer = window.setInterval(() => setTokenClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [tokenExpiresAt])
 
   useEffect(() => sessionStorage.setItem(ACTIVE_GROUP_KEY, normalizedGroup(queryGroup)), [queryGroup])
 
@@ -469,10 +548,16 @@ function App() {
     setPagination((current) => ({ ...current, [key]: value }))
   }
 
-  function setTokenForGroup(group: string, value: string) {
+  function setTokenForGroup(group: string, value: string, expiresAt: number | null = jwtExpiry(value)) {
     const normalized = normalizedGroup(group)
     setGroupTokens((current) => {
       if (value) return { ...current, [normalized]: value }
+      const next = { ...current }
+      delete next[normalized]
+      return next
+    })
+    setGroupTokenExpiries((current) => {
+      if (value && expiresAt) return { ...current, [normalized]: expiresAt }
       const next = { ...current }
       delete next[normalized]
       return next
@@ -748,7 +833,7 @@ function App() {
       setStatus(pagination.page_count === 'all' ? 'Collecting all pages…' : 'Executing report…')
       const response = await executeRequest(controller.signal)
       const capturedToken = apiMode === 'rest' ? findAccessToken(response.pages) : null
-      if (capturedToken) setTokenForGroup(queryGroup, capturedToken)
+      if (capturedToken) setTokenForGroup(queryGroup, capturedToken.value, capturedToken.expiresAt)
       setResult(response)
       setResultTab(response.errors.length > 0 ? 'errors' : 'json')
       setStatus(
@@ -1118,7 +1203,7 @@ function App() {
           <div className="card-title"><div><Wifi size={18} /><span>Connection</span></div><span className={`connection-chip ${connectionStatus}`}>{connectionStatus === 'ok' ? 'Connected' : connectionStatus === 'testing' ? 'Testing…' : connectionStatus === 'failed' ? 'Failed' : 'Not tested'}</span></div>
           <div className="connection-grid">
             <label className="field wide"><span>Endpoint URL</span><div className="input-with-icon"><Database size={16} /><input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={apiMode === 'graphql' ? 'https://api.example.com/graphql' : 'https://api.example.com/v1/items'} /></div></label>
-            <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} · {sectionEndpointCount} APIs</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Federated to every API in this section" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
+            <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} · {sectionEndpointCount} APIs</em>}{token && <em className={`token-expiry-badge ${tokenExpiresAt ? tokenExpiresAt <= tokenClock ? 'expired' : '' : 'unknown'}`} title={tokenExpiresAt ? `Expires ${new Date(tokenExpiresAt).toLocaleString()}` : 'This token did not provide expiration information'}><Clock3 size={10} /> {tokenExpiresAt ? formatTokenCountdown(tokenExpiresAt, tokenClock) : 'Expiry unknown'}</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Federated to every API in this section" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
             <button className="secondary-button test-button" onClick={handleTest} disabled={connectionStatus === 'testing'}>{connectionStatus === 'testing' ? <LoaderCircle className="spin" size={16} /> : <Wifi size={16} />} Test</button>
           </div>
         </section>
