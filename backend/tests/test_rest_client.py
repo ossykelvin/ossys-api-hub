@@ -95,6 +95,48 @@ def test_rest_supports_root_array_responses(monkeypatch):
     assert result.pages == [[{"id": 1}, {"id": 2}]]
 
 
+def test_rest_decodes_json_encoded_array_responses_into_rows(monkeypatch):
+    encoded_response = '[{"SurveyID": 2, "Name": "Main"}, {"SurveyID": 3, "Name": "Lab"}]'
+    fake_client = FakeAsyncClient([encoded_response])
+    monkeypatch.setattr(
+        "app.services.rest_client.httpx.AsyncClient",
+        lambda **_kwargs: fake_client,
+    )
+    request = RestRunRequest(
+        endpoint="https://example.com/api/Surveys/2",
+        pagination=PaginationConfig(mode="none", items_path=""),
+    )
+
+    result = asyncio.run(execute_rest_paginated(request))
+
+    assert result.records == [
+        {"SurveyID": 2, "Name": "Main"},
+        {"SurveyID": 3, "Name": "Lab"},
+    ]
+    assert result.pages == [encoded_response]
+
+
+def test_rest_decodes_json_encoded_items_path_into_rows(monkeypatch):
+    fake_client = FakeAsyncClient([{
+        "Surveys": '[{"SurveyID": 2, "Name": "Main"}, {"SurveyID": 3, "Name": "Lab"}]',
+    }])
+    monkeypatch.setattr(
+        "app.services.rest_client.httpx.AsyncClient",
+        lambda **_kwargs: fake_client,
+    )
+    request = RestRunRequest(
+        endpoint="https://example.com/api/Surveys",
+        pagination=PaginationConfig(mode="none", items_path="Surveys"),
+    )
+
+    result = asyncio.run(execute_rest_paginated(request))
+
+    assert result.records == [
+        {"SurveyID": 2, "Name": "Main"},
+        {"SurveyID": 3, "Name": "Lab"},
+    ]
+
+
 def test_rest_form_body_uses_url_encoding(monkeypatch):
     fake_client = FakeAsyncClient([{"access_token": "secret"}])
     monkeypatch.setattr(
