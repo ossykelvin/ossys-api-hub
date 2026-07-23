@@ -82,20 +82,30 @@ function selectTabularRecords(records: Record<string, unknown>[]) {
   if (recordsLookTabular) return { dataRecords: records, summaryRecords: null, resultPath: null }
 
   const candidates = new Map<string, RecordCollection>()
+  const preferredPaths = new Set<string>()
   for (const record of records) {
     const hasRootScalar = Object.values(record).some((value) => value === null || typeof value !== 'object')
     for (const candidate of nestedRecordArrays(record)) {
       const finalKey = candidate.path.at(-1)?.toLowerCase() ?? ''
-      if (hasRootScalar && !RESULT_COLLECTION_KEYS.has(finalKey)) continue
       const key = candidate.path.join('.')
       const current = candidates.get(key)
       candidates.set(key, {
         path: candidate.path,
         records: [...(current?.records ?? []), ...candidate.records],
       })
+      if (!hasRootScalar || RESULT_COLLECTION_KEYS.has(finalKey)) preferredPaths.add(key)
     }
   }
-  const selected = Array.from(candidates.values()).sort((left, right) =>
+
+  const preferredCandidates = Array.from(candidates.entries())
+    .filter(([key]) => preferredPaths.has(key))
+    .map(([, candidate]) => candidate)
+  const selectableCandidates = preferredCandidates.length > 0
+    ? preferredCandidates
+    : candidates.size === 1
+      ? Array.from(candidates.values())
+      : []
+  const selected = selectableCandidates.sort((left, right) =>
     right.records.length - left.records.length || right.path.length - left.path.length,
   )[0]
   if (!selected) return { dataRecords: records, summaryRecords: null, resultPath: null }
