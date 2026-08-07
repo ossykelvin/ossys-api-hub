@@ -84,6 +84,15 @@ export interface ApiDocumentationInputField {
   inputFields?: ApiDocumentationInputField[]
 }
 
+export interface ApiDocumentationOutputField {
+  name: string
+  type?: string
+  description?: string
+  deprecated?: boolean
+  deprecationReason?: string
+  fields?: ApiDocumentationOutputField[]
+}
+
 export interface ApiDocumentation {
   queryId: string
   group: string
@@ -117,15 +126,10 @@ export interface ApiDocumentation {
     maximumPages?: number
   }
   graphql?: {
+    outputTreeVersion?: number
     rootField?: string
     arguments?: Array<ApiDocumentationInputField>
     returnType?: string
-    fields?: Array<{
-      name: string
-      type?: string
-      description?: string
-      deprecated?: boolean
-      deprecationReason?: string
-    }>
+    fields?: ApiDocumentationOutputField[]
   }
 }
