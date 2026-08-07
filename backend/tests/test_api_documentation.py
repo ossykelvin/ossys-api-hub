@@ -109,3 +109,53 @@ def test_graphql_arguments_include_expandable_input_fields() -> None:
     assert argument["inputFields"][0]["name"] == "name"
     assert argument["inputFields"][0]["description"] == "Building name."
     assert argument["example"] == {"name": ""}
+
+
+def test_graphql_result_data_includes_expandable_nested_fields() -> None:
+    query = {
+        **sample_query(),
+        "id": "graphql-results",
+        "group": "Insights",
+        "name": "Insights · Sensor assignments",
+        "endpoint": "https://example.com/graphql",
+        "apiMode": "graphql",
+        "query": "query { sensorAssignments { data { id sensor { id name } } total } }",
+    }
+    schema = {
+        "queryType": {"fields": [{
+            "name": "sensorAssignments", "description": "Gets assignments.", "args": [],
+            "type": {"kind": "OBJECT", "name": "SensorAssignmentPage"},
+        }]},
+        "types": [
+            {"kind": "OBJECT", "name": "SensorAssignmentPage", "fields": [
+                {"name": "data", "description": "Assignment rows.", "isDeprecated": False,
+                 "type": {"kind": "LIST", "name": None, "ofType": {"kind": "OBJECT", "name": "SensorAssignment"}}},
+                {"name": "total", "description": "Total rows.", "isDeprecated": False,
+                 "type": {"kind": "SCALAR", "name": "Int"}},
+            ]},
+            {"kind": "OBJECT", "name": "SensorAssignment", "fields": [
+                {"name": "id", "description": "Assignment ID.", "isDeprecated": False,
+                 "type": {"kind": "SCALAR", "name": "ID"}},
+                {"name": "sensor", "description": "Assigned sensor.", "isDeprecated": False,
+                 "type": {"kind": "OBJECT", "name": "Sensor"}},
+            ]},
+            {"kind": "OBJECT", "name": "Sensor", "fields": [
+                {"name": "id", "description": "Sensor ID.", "isDeprecated": False,
+                 "type": {"kind": "SCALAR", "name": "ID"}},
+                {"name": "name", "description": "Sensor name.", "isDeprecated": False,
+                 "type": {"kind": "SCALAR", "name": "String"}},
+                {"name": "assignment", "description": "Back reference.", "isDeprecated": False,
+                 "type": {"kind": "OBJECT", "name": "SensorAssignment"}},
+            ]},
+        ],
+    }
+
+    graphql = documentation_from_graphql(query, schema)["graphql"]
+    fields = graphql["fields"]
+    data = next(field for field in fields if field["name"] == "data")
+    sensor = next(field for field in data["fields"] if field["name"] == "sensor")
+
+    assert [field["name"] for field in data["fields"]] == ["id", "sensor"]
+    assert graphql["outputTreeVersion"] == 1
+    assert [field["name"] for field in sensor["fields"]] == ["id", "name", "assignment"]
+    assert next(field for field in sensor["fields"] if field["name"] == "assignment")["fields"] == []

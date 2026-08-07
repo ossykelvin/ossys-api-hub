@@ -15,7 +15,7 @@ import {
   DEFAULT_SAVED_QUERY_GROUP, flattenRecord, loadSavedQueries,
   parseHeaders, parseJsonObject, uniqueReportFileStem,
 } from './lib/data'
-import type { ApiDocumentation, ApiDocumentationInputField, ApiMode, PaginationConfig, PaginationMode, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from './types'
+import type { ApiDocumentation, ApiDocumentationInputField, ApiDocumentationOutputField, ApiMode, PaginationConfig, PaginationMode, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from './types'
 
 const defaultQuery = `query GetRecords($first: Int!, $after: String) {
   records(first: $first, after: $after) {
@@ -247,6 +247,23 @@ function DocumentationInputFields({ fields }: { fields: ApiDocumentationInputFie
       return nestedFields.length > 0
         ? <details key={field.name}><summary>{content}</summary><div className="documentation-input-detail">{field.enumValues && field.enumValues.length > 0 && <p><strong>Allowed values:</strong> {field.enumValues.join(', ')}</p>}<DocumentationInputFields fields={nestedFields} /></div></details>
         : <div className="documentation-input-row" key={field.name}>{content}</div>
+    })}
+  </div>
+}
+
+function DocumentationOutputFields({ fields }: { fields: ApiDocumentationOutputField[] }) {
+  if (fields.length === 0) return null
+  return <div className="documentation-output-fields">
+    {fields.map((field) => {
+      const nestedFields = field.fields || []
+      const summary = <>
+        <span className="documentation-output-name"><code>{field.name}</code>{field.deprecated && <em>Deprecated</em>}</span>
+        <code>{field.type || 'Unknown'}</code>
+        <small>{nestedFields.length > 0 ? `${nestedFields.length} field${nestedFields.length === 1 ? '' : 's'}` : ''}</small>
+      </>
+      return nestedFields.length > 0
+        ? <details key={field.name} className="documentation-output-field"><summary>{summary}<ChevronRight size={15} /></summary><div className="documentation-output-detail"><p>{field.description || 'No field description supplied.'}</p>{field.deprecationReason && <p><strong>Deprecation:</strong> {field.deprecationReason}</p>}<DocumentationOutputFields fields={nestedFields} /></div></details>
+        : <div className="documentation-output-row" key={field.name}>{summary}<span>{field.description || 'No field description supplied.'}</span></div>
     })}
   </div>
 }
@@ -644,7 +661,32 @@ function App() {
     setDocumentationError('')
     setDocumentationLoading(true)
     try {
-      setDocumentation(await getQueryDocumentation(id))
+      const cached = await getQueryDocumentation(id)
+      setDocumentation(cached)
+      const savedQuery = savedQueries.find((item) => item.id === id)
+      const group = normalizedGroup(savedQuery?.group)
+      const groupToken = groupTokens[group]
+      const expiresAt = groupTokenExpiries[group] ?? (groupToken ? jwtExpiry(groupToken) : null)
+      const canUpgrade = savedQuery?.apiMode === 'graphql'
+        && cached.graphql?.outputTreeVersion !== 1
+        && Boolean(groupToken)
+        && (!expiresAt || expiresAt > Date.now())
+      if (canUpgrade) {
+        setDocumentationRefreshing(true)
+        try {
+          const refreshed = await refreshQueryDocumentation(id, {
+            bearer_token: groupToken,
+            timeout_seconds: Math.min(timeoutSeconds, 120),
+            verify_ssl: verifySsl,
+          })
+          setDocumentation(refreshed)
+          setStatus(`Documentation upgraded for ${savedQuery.name}`)
+        } catch (caught) {
+          setDocumentationError((caught as Error).message)
+        } finally {
+          setDocumentationRefreshing(false)
+        }
+      }
     } catch (caught) {
       setDocumentationError((caught as Error).message)
     } finally {
@@ -1351,7 +1393,7 @@ function App() {
                 <h4>Available result fields</h4>
                 {(documentation.graphql.fields || []).length === 0
                   ? <p className="documentation-empty">No immediate result fields were supplied.</p>
-                  : <div className="documentation-field-list">{documentation.graphql.fields?.map((field) => <div key={field.name}><span><code>{field.name}</code><small>{field.type}</small></span><p>{field.description || 'No field description supplied.'}</p></div>)}</div>}
+                  : <DocumentationOutputFields fields={documentation.graphql.fields || []} />}
               </section>}
 
               <section className="documentation-section">

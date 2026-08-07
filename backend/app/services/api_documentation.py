@@ -412,6 +412,31 @@ def _input_fields(
     return fields
 
 
+def _output_fields(
+    reference: dict[str, Any] | None,
+    types_by_name: dict[str, dict[str, Any]],
+    depth: int = 0,
+    seen: frozenset[str] = frozenset(),
+) -> list[dict[str, Any]]:
+    """Build a navigable output tree while stopping recursive GraphQL type cycles."""
+    name = _named_type(reference)
+    if not name or name in seen or depth > 8:
+        return []
+    type_definition = types_by_name.get(name, {})
+    next_seen = seen | {name}
+    return [
+        {
+            "name": field.get("name") or "",
+            "type": _type_name(field.get("type")),
+            "description": field.get("description") or "",
+            "deprecated": bool(field.get("isDeprecated")),
+            "deprecationReason": field.get("deprecationReason") or "",
+            "fields": _output_fields(field.get("type"), types_by_name, depth + 1, next_seen),
+        }
+        for field in (type_definition.get("fields") or [])
+    ]
+
+
 def documentation_from_graphql(query: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     record = generated_documentation(query)
     graphql = record.get("graphql", {})
@@ -426,18 +451,7 @@ def documentation_from_graphql(query: dict[str, Any], schema: dict[str, Any]) ->
         item["name"]: item for item in schema.get("types", [])
         if isinstance(item, dict) and item.get("name")
     }
-    return_name = _named_type(root_field.get("type"))
-    return_definition = types_by_name.get(return_name, {})
-    fields = [
-        {
-            "name": field.get("name") or "",
-            "type": _type_name(field.get("type")),
-            "description": field.get("description") or "",
-            "deprecated": bool(field.get("isDeprecated")),
-            "deprecationReason": field.get("deprecationReason") or "",
-        }
-        for field in (return_definition.get("fields") or [])
-    ]
+    fields = _output_fields(root_field.get("type"), types_by_name)
     record.update({
         "status": "source",
         "sourceType": "graphql",
@@ -447,6 +461,7 @@ def documentation_from_graphql(query: dict[str, Any], schema: dict[str, Any]) ->
         "description": root_field.get("description") or record["description"],
         "deprecated": bool(root_field.get("isDeprecated")),
         "graphql": {
+            "outputTreeVersion": 1,
             "rootField": root_name,
             "arguments": [
                 {
