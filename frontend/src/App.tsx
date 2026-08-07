@@ -511,6 +511,9 @@ function App() {
     rows.slice(0, 200).forEach((row) => Object.keys(row).forEach((key) => values.add(key)))
     return Array.from(values)
   }, [rows])
+  const documentationResultFields = documentation?.graphql?.fields || []
+  const documentationDataField = documentationResultFields.find((field) => field.name === 'data')
+  const documentationMetadataFields = documentationResultFields.filter((field) => field.name !== 'data')
   const visibleSaved = useMemo(() => {
     const searchTerm = sidebarSearch.trim().toLowerCase()
     if (!searchTerm) return savedQueries
@@ -1386,14 +1389,18 @@ function App() {
               {documentation.graphql && <section className="documentation-section">
                 <h3>GraphQL schema</h3>
                 <dl className="documentation-graphql-summary"><div><dt>Root field</dt><dd><code>{documentation.graphql.rootField || 'Unknown'}</code></dd></div><div><dt>Return type</dt><dd><code>{documentation.graphql.returnType || 'Not supplied'}</code></dd></div></dl>
+                <h4>Result data</h4>
+                {documentationDataField
+                  ? <DocumentationOutputFields fields={[documentationDataField]} />
+                  : <p className="documentation-empty">This API does not define a <code>data</code> result field.</p>}
                 <h4>Arguments</h4>
                 {(documentation.graphql.arguments || []).length === 0
                   ? <p className="documentation-empty">No arguments are defined.</p>
                   : <div className="documentation-argument-list">{documentation.graphql.arguments?.map((argument) => <details key={argument.name} className="documentation-argument"><summary><span><code>{argument.name}</code>{argument.required && <em>Required</em>}</span><code>{argument.type || 'Unknown'}</code><small>{(argument.inputFields || []).length} input field{(argument.inputFields || []).length === 1 ? '' : 's'}</small><ChevronRight size={15} /></summary><div className="documentation-argument-content"><p>{argument.description || 'No argument description supplied.'}</p>{argument.enumValues && argument.enumValues.length > 0 && <p><strong>Allowed values:</strong> {argument.enumValues.join(', ')}</p>}{argument.default != null && <p><strong>Default:</strong> <code>{documentationValue(argument.default)}</code></p>}<div className="documentation-argument-actions"><button onClick={() => copyArgumentExample(argument)}>Copy example</button></div><pre>{documentationValue({ [argument.name]: argument.example })}</pre><DocumentationInputFields fields={argument.inputFields || []} /></div></details>)}</div>}
-                <h4>Available result fields</h4>
-                {(documentation.graphql.fields || []).length === 0
-                  ? <p className="documentation-empty">No immediate result fields were supplied.</p>
-                  : <DocumentationOutputFields fields={documentation.graphql.fields || []} />}
+                <h4>{documentationDataField ? 'Result metadata' : 'Available result fields'}</h4>
+                {documentationMetadataFields.length === 0
+                  ? <p className="documentation-empty">No additional result fields were supplied.</p>
+                  : <DocumentationOutputFields fields={documentationMetadataFields} />}
               </section>}
 
               <section className="documentation-section">
