@@ -59,7 +59,9 @@ async def _request_json(
         request.method,
         endpoint,
         headers=headers,
-        params=request_query_params,
+        # Passing an empty mapping makes httpx replace an endpoint's existing
+        # query string. None preserves parameters entered directly in the URL.
+        params=request_query_params or None,
         **payload,
     )
     if not response.is_success:

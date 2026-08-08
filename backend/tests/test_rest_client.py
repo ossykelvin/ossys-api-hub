@@ -78,6 +78,26 @@ def test_rest_page_pagination_uses_query_parameters(monkeypatch):
     assert fake_client.requests[1]["params"]["page"] == 2
 
 
+def test_rest_preserves_query_parameters_embedded_in_endpoint(monkeypatch):
+    fake_client = FakeAsyncClient([{"access_token": "secret"}])
+    monkeypatch.setattr(
+        "app.services.rest_client.httpx.AsyncClient",
+        lambda **_kwargs: fake_client,
+    )
+    request = RestRunRequest(
+        endpoint="https://example.com/token?grant_type=password",
+        method="POST",
+        body={"email": "user@example.com", "password": "password"},
+        pagination=PaginationConfig(mode="none", items_path=""),
+    )
+
+    result = asyncio.run(execute_rest_paginated(request))
+
+    assert fake_client.requests[0]["url"] == "https://example.com/token?grant_type=password"
+    assert fake_client.requests[0]["params"] is None
+    assert result.errors == []
+
+
 def test_rest_supports_root_array_responses(monkeypatch):
     fake_client = FakeAsyncClient([[{"id": 1}, {"id": 2}]])
     monkeypatch.setattr(

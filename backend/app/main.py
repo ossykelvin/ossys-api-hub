@@ -252,7 +252,7 @@ async def test_rest_connection(request: RestConnectionTestRequest) -> dict[str, 
                 request.method,
                 endpoint,
                 headers=headers,
-                params=query_params,
+                params=query_params or None,
                 **payload,
             )
         try:
