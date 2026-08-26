@@ -26,6 +26,17 @@ def _connection() -> psycopg.Connection[Any]:
     )
 
 
+def ping_database() -> None:
+    """Open a database connection and execute a minimal read-only query."""
+    try:
+        with _connection() as connection:
+            row = connection.execute("SELECT 1").fetchone()
+    except psycopg.Error as exc:
+        raise ConnectionError(f"Could not reach the application database: {exc}") from exc
+    if row != (1,):
+        raise RuntimeError("Application database heartbeat returned an unexpected result")
+
+
 def load_json_state(key: str) -> Any | None:
     try:
         with _connection() as connection:

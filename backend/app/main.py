@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +35,7 @@ from app.services.api_documentation import (
 )
 from app.services.rest_client import execute_rest_paginated, resolve_endpoint_parameters
 from app.services.saved_query_groups import load_saved_query_groups, save_saved_query_groups
+from app.services.state_store import ping_database
 from app.services.saved_queries import (
     delete_saved_query,
     load_saved_queries,
@@ -53,7 +54,7 @@ async def require_app_authentication(request, call_next):
     if (
         not expected_password
         or not request.url.path.startswith("/api/")
-        or request.url.path == "/api/health"
+        or request.url.path in {"/api/health", "/api/cron/database-heartbeat"}
     ):
         return await call_next(request)
 
@@ -90,6 +91,23 @@ app.add_middleware(
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "graphql-hub-api"}
+
+
+@app.get("/api/cron/database-heartbeat")
+async def database_heartbeat(request: Request) -> dict[str, str]:
+    cron_secret = os.getenv("CRON_SECRET", "").strip()
+    if not cron_secret:
+        raise HTTPException(status_code=503, detail="CRON_SECRET is not configured")
+
+    authorization = request.headers.get("Authorization", "")
+    if not secrets.compare_digest(authorization, f"Bearer {cron_secret}"):
+        raise HTTPException(status_code=401, detail="Unauthorized cron request")
+
+    try:
+        ping_database()
+    except (ConnectionError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"status": "ok", "database": "reachable"}
 
 
 @app.get("/api/saved-queries")

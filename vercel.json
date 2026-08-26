@@ -10,6 +10,12 @@
       "entrypoint": "app.main:app"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/database-heartbeat",
+      "schedule": "0 6 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

@@ -25,3 +25,34 @@ def test_api_authentication_protects_data_routes(monkeypatch) -> None:
         auth=("ossy", "test-password"),
     )
     assert authorized.status_code == 200
+
+
+def test_database_heartbeat_requires_cron_secret(monkeypatch) -> None:
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    response = TestClient(app).get("/api/cron/database-heartbeat")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "CRON_SECRET is not configured"}
+
+
+def test_database_heartbeat_checks_bearer_token_and_database(monkeypatch) -> None:
+    monkeypatch.setenv("APP_USERNAME", "ossy")
+    monkeypatch.setenv("APP_PASSWORD", "test-password")
+    monkeypatch.setenv("CRON_SECRET", "test-cron-secret")
+    heartbeat_calls: list[bool] = []
+    monkeypatch.setattr(
+        "app.main.ping_database",
+        lambda: heartbeat_calls.append(True),
+    )
+    client = TestClient(app)
+
+    unauthorized = client.get("/api/cron/database-heartbeat")
+    assert unauthorized.status_code == 401
+    assert heartbeat_calls == []
+
+    authorized = client.get(
+        "/api/cron/database-heartbeat",
+        headers={"Authorization": "Bearer test-cron-secret"},
+    )
+    assert authorized.status_code == 200
+    assert authorized.json() == {"status": "ok", "database": "reachable"}
+    assert heartbeat_calls == [True]
