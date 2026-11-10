@@ -1321,14 +1321,14 @@ function App() {
             <label className="field wide"><span>Endpoint URL</span><div className="input-with-icon"><Database size={16} /><input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={apiMode === 'graphql' ? 'https://api.example.com/graphql' : 'https://api.example.com/v1/items'} /></div></label>
             <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} · {sectionEndpointCount} APIs</em>}{token && <em className={`token-expiry-badge ${tokenExpiresAt ? tokenExpiresAt <= tokenClock ? 'expired' : '' : 'unknown'}`} title={tokenExpiresAt ? `Expires ${new Date(tokenExpiresAt).toLocaleString()}` : 'This token did not provide expiration information'}><Clock3 size={10} /> {tokenExpiresAt ? formatTokenCountdown(tokenExpiresAt, tokenClock) : 'Expiry unknown'}</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Federated to every API in this section" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
             <button className="secondary-button test-button" onClick={handleTest} disabled={connectionStatus === 'testing'}>{connectionStatus === 'testing' ? <LoaderCircle className="spin" size={16} /> : <Wifi size={16} />} Test</button>
+            <label className="field group-api-key-field">
+              <span>Group API key (apikey header)</span>
+              <input type="password" autoComplete="off" value={sharedApiKey} disabled={!apiKeyScope || activeTokenGroup === ALL_GROUPS_VALUE}
+                onChange={(event) => setGroupApiKeys(current => ({ ...current, [apiKeyScope]: event.target.value.trim() }))}
+                placeholder="Set once for this group and endpoint origin" />
+              <small>Applied to requests in this group on the same origin. Request-specific apikey headers take precedence. Edits are kept for this browser tab session.</small>
+            </label>
           </div>
-          <label className="field" style={{ marginTop: 12 }}>
-            <span>Group API key (apikey header)</span>
-            <input type="password" autoComplete="off" value={sharedApiKey} disabled={!apiKeyScope || activeTokenGroup === ALL_GROUPS_VALUE}
-              onChange={(event) => setGroupApiKeys(current => ({ ...current, [apiKeyScope]: event.target.value.trim() }))}
-              placeholder="Set once for this group and endpoint origin" />
-            <small>Applied to requests in this group on the same origin. Request-specific apikey headers take precedence. Edits are kept for this browser tab session.</small>
-          </label>
         </section>
 
         <section className="editor-grid">
