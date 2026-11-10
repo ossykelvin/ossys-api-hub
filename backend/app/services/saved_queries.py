@@ -14,6 +14,7 @@ from app.services.state_store import (
     save_json_state,
     upsert_json_array_item,
 )
+from app.services.insights_iteration_templates import configure_catalogue
 
 
 _store_lock = Lock()
@@ -35,7 +36,11 @@ def load_saved_queries(path: Path | None = None) -> list[dict[str, Any]]:
             save_json_state("saved_queries", value)
         if not isinstance(value, list):
             raise ValueError("Saved query store must contain a JSON array")
-        return [item for item in value if isinstance(item, dict)]
+        queries = [item for item in value if isinstance(item, dict)]
+        migrated = configure_catalogue(queries)
+        if migrated != queries:
+            save_json_state("saved_queries", migrated)
+        return migrated
 
     store_path = path or saved_queries_path()
     if path is None and not store_path.exists():
@@ -46,7 +51,8 @@ def load_saved_queries(path: Path | None = None) -> list[dict[str, Any]]:
 
     if not isinstance(value, list):
         raise ValueError("Saved query store must contain a JSON array")
-    return [item for item in value if isinstance(item, dict)]
+    queries = [item for item in value if isinstance(item, dict)]
+    return configure_catalogue(queries)
 
 
 def _load_queries_file(store_path: Path) -> Any:

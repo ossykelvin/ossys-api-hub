@@ -840,6 +840,13 @@ function App() {
   }
 
   function buildGraphQLRequest() {
+    if (iteration.enabled && /\$[A-Za-z_][A-Za-z0-9_]*\s*\./.test(query)) {
+      throw new Error('GraphQL variables cannot use property access such as $dateRange.start. Pass the object as dateRange: $dateRange and use dateRange.start only in the iteration Variable path.')
+    }
+    const iterationVariable = iteration.parameter_path.split('.')[0]?.trim()
+    if (iteration.enabled && iterationVariable && !query.includes(`$${iterationVariable}`)) {
+      throw new Error(`The query must reference the iteration variable $${iterationVariable}.`)
+    }
     return {
       ...buildCommonRequest(),
       query,

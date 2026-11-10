@@ -14,6 +14,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.saved_queries import load_saved_queries, save_saved_queries  # noqa: E402
+from app.services.insights_iteration_templates import configure_catalogue as configure_iteration  # noqa: E402
 from scripts.complete_insights_catalogue import (  # noqa: E402
     GRAPHQL_ENDPOINT,
     INTROSPECTION_QUERY,
@@ -257,7 +258,7 @@ def main() -> None:
         else query
         for query in updated
     ]
-    save_saved_queries(updated)
+    save_saved_queries(configure_iteration(updated))
     print("Populated 30 Insights GraphQL templates with verified tenant sample values.")
 
 

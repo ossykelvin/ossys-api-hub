@@ -9921,7 +9921,7 @@
       "items_path": "data.wifiUtilizationKpi.data",
       "record_path": "",
       "page_size": 100,
-      "page_count": 1,
+      "page_count": "all",
       "max_pages": 500,
       "delay_ms": 0,
       "page_variable": "pageNumber",
@@ -9939,7 +9939,19 @@
       "next_token_path": "data.nextToken"
     },
     "updatedAt": "2026-07-19T16:13:12.129258+00:00",
-    "apiMode": "graphql"
+    "apiMode": "graphql",
+    "iteration": {
+      "enabled": true,
+      "mode": "date",
+      "parameter_path": "dateRange.start",
+      "end_parameter_path": "dateRange.end",
+      "step": 1,
+      "location": "query",
+      "max_iterations": 1000,
+      "delay_ms": 0,
+      "start_value": "2026-07-19",
+      "end_value": "2026-07-19"
+    }
   },
   {
     "id": "insights-schema-flow-count",
@@ -10078,18 +10090,18 @@
     "group": "Insights",
     "name": "Insights · Average Utilization by Building and Day",
     "endpoint": "https://insightsapi-uk.fmshosted.com/graphql",
-    "query": "query AverageUtilizationByBuildingAndDay {\n  utilizationKpi(\n    dateRange: { start: \"2026-07-19T00:00:00Z\", end: \"2026-07-19T23:59:59Z\" }\n    page: { number: 1, size: 100 }\n    groupBy: [Building, DayOfWeek]\n    filters: {\n      building: { ids: [\"471189ad7dc1d217d546f3ab6e92172b\"], name: \"The Discovery Centre\" }\n      date: { daysOfWeek: [Sunday] }\n      timeSlot: { hours: [0] }\n    }\n  ) {\n    data { buildingId dayOfWeek sumOfOccupancy sumOfCapacity averageUtilization }\n    count\n    pageNumber\n    pageSize\n  }\n}",
-    "variablesText": "{}",
+    "query": "query AverageUtilizationByBuildingAndDay($pageNumber: Int!, $pageSize: Int!, $dateRange: DateRange!) {\n  utilizationKpi(\n    dateRange: $dateRange\n    page: { number: $pageNumber, size: $pageSize }\n    groupBy: [Building, DayOfWeek]\n    filters: {\n      building: { ids: [\"471189ad7dc1d217d546f3ab6e92172b\"], name: \"The Discovery Centre\" }\n      date: { daysOfWeek: [Sunday] }\n      timeSlot: { hours: [0] }\n    }\n  ) {\n    data { buildingId dayOfWeek sumOfOccupancy sumOfCapacity averageUtilization }\n    count\n    pageNumber\n    pageSize\n  }\n}",
+    "variablesText": "{\n  \"dateRange\": {\n    \"start\": \"2026-07-19T00:00:00Z\",\n    \"end\": \"2026-07-19T23:59:59Z\"\n  },\n  \"pageNumber\": 1,\n  \"pageSize\": 100\n}",
     "headersText": "{}",
     "pagination": {
-      "mode": "none",
-      "items_path": "",
+      "mode": "page",
+      "items_path": "data.utilizationKpi.data",
       "record_path": "",
       "page_size": 100,
-      "page_count": 1,
+      "page_count": "all",
       "max_pages": 500,
       "delay_ms": 0,
-      "page_variable": "page",
+      "page_variable": "pageNumber",
       "page_size_variable": "pageSize",
       "starting_page": 1,
       "total_pages_path": "",
@@ -10104,7 +10116,19 @@
       "next_token_path": "data.nextToken"
     },
     "updatedAt": "2026-07-19T16:13:12.129258+00:00",
-    "apiMode": "graphql"
+    "apiMode": "graphql",
+    "iteration": {
+      "enabled": true,
+      "mode": "date",
+      "parameter_path": "dateRange.start",
+      "end_parameter_path": "dateRange.end",
+      "step": 1,
+      "location": "query",
+      "max_iterations": 1000,
+      "delay_ms": 0,
+      "start_value": "2026-07-19",
+      "end_value": "2026-07-19"
+    }
   },
   {
     "id": "insights-utilization-kpi-building",
@@ -10137,25 +10161,37 @@
       "next_token_path": "data.nextToken"
     },
     "updatedAt": "2026-07-20T19:53:48.011801+00:00",
-    "apiMode": "graphql"
+    "apiMode": "graphql",
+    "iteration": {
+      "enabled": true,
+      "mode": "date",
+      "parameter_path": "dateRange.start",
+      "end_parameter_path": "dateRange.end",
+      "step": 1,
+      "location": "query",
+      "max_iterations": 1000,
+      "delay_ms": 0,
+      "start_value": "2026-07-19",
+      "end_value": "2026-07-19"
+    }
   },
   {
     "id": "insights-utilizations",
     "group": "Insights",
     "name": "Insights · Raw Utilizations",
     "endpoint": "https://insightsapi-uk.fmshosted.com/graphql",
-    "query": "query Utilizations {\n  utilizations(\n    dateRange: { start: \"2026-07-19T00:00:00Z\", end: \"2026-07-19T23:59:59Z\" }\n    page: { number: 1, size: 100 }\n    filters: { building: { ids: [\"471189ad7dc1d217d546f3ab6e92172b\"], name: \"The Discovery Centre\" }, floor: { ids: [\"01143f825db004b13655ec988ceaf814\"], name: \"Floor M0\" }, date: { daysOfWeek: [Sunday] }, timeSlot: { hours: [0] }, source: [\"VS\"] }\n  ) {\n    data {\n      id\n      buildingId\n      floorId\n      spaceId\n      sensorAssignmentId\n      date\n      timeSlot\n      occupancy\n      capacity\n      source\n      userDefinedField1Id\n      userDefinedField2Id\n      userDefinedField3Id\n    }\n    count\n    total\n    pageNumber\n    pageSize\n  }\n}",
-    "variablesText": "{}",
+    "query": "query Utilizations($pageNumber: Int!, $pageSize: Int!, $dateRange: DateRange!) {\n  utilizations(\n    dateRange: $dateRange\n    page: { number: $pageNumber, size: $pageSize }\n    filters: { building: { ids: [\"471189ad7dc1d217d546f3ab6e92172b\"], name: \"The Discovery Centre\" }, floor: { ids: [\"01143f825db004b13655ec988ceaf814\"], name: \"Floor M0\" }, date: { daysOfWeek: [Sunday] }, timeSlot: { hours: [0] }, source: [\"VS\"] }\n  ) {\n    data {\n      id\n      buildingId\n      floorId\n      spaceId\n      sensorAssignmentId\n      date\n      timeSlot\n      occupancy\n      capacity\n      source\n      userDefinedField1Id\n      userDefinedField2Id\n      userDefinedField3Id\n    }\n    count\n    total\n    pageNumber\n    pageSize\n  }\n}",
+    "variablesText": "{\n  \"dateRange\": {\n    \"start\": \"2026-07-19T00:00:00Z\",\n    \"end\": \"2026-07-19T23:59:59Z\"\n  },\n  \"pageNumber\": 1,\n  \"pageSize\": 100\n}",
     "headersText": "{}",
     "pagination": {
-      "mode": "none",
-      "items_path": "",
+      "mode": "page",
+      "items_path": "data.utilizations.data",
       "record_path": "",
       "page_size": 100,
-      "page_count": 1,
+      "page_count": "all",
       "max_pages": 500,
       "delay_ms": 0,
-      "page_variable": "page",
+      "page_variable": "pageNumber",
       "page_size_variable": "pageSize",
       "starting_page": 1,
       "total_pages_path": "",
@@ -10170,7 +10206,19 @@
       "next_token_path": "data.nextToken"
     },
     "updatedAt": "2026-07-19T16:13:12.129258+00:00",
-    "apiMode": "graphql"
+    "apiMode": "graphql",
+    "iteration": {
+      "enabled": true,
+      "mode": "date",
+      "parameter_path": "dateRange.start",
+      "end_parameter_path": "dateRange.end",
+      "step": 1,
+      "location": "query",
+      "max_iterations": 1000,
+      "delay_ms": 0,
+      "start_value": "2026-07-19",
+      "end_value": "2026-07-19"
+    }
   },
   {
     "id": "insights-buildings-filtered",
@@ -10269,7 +10317,19 @@
       "next_token_path": "data.nextToken"
     },
     "updatedAt": "2026-07-20T19:53:48.011801+00:00",
-    "apiMode": "graphql"
+    "apiMode": "graphql",
+    "iteration": {
+      "enabled": true,
+      "mode": "date",
+      "parameter_path": "dateRange.start",
+      "end_parameter_path": "dateRange.end",
+      "step": 1,
+      "location": "query",
+      "max_iterations": 1000,
+      "delay_ms": 0,
+      "start_value": "2026-07-19",
+      "end_value": "2026-07-19"
+    }
   },
   {
     "id": "1f0b1dd8-5f33-454b-a914-502aebc24f40",

@@ -111,6 +111,18 @@ def configure_query(query: dict[str, Any], timestamp: str) -> dict[str, Any]:
         }
     )
     updated["pagination"] = pagination
+    updated["iteration"] = {
+        "enabled": True,
+        "mode": "date",
+        "parameter_path": "dateRange.start",
+        "end_parameter_path": "dateRange.end",
+        "start_value": "2026-07-19",
+        "end_value": "2026-07-19",
+        "step": 1,
+        "location": "query",
+        "max_iterations": 1000,
+        "delay_ms": 0,
+    }
     updated["updatedAt"] = timestamp
     return updated
 
