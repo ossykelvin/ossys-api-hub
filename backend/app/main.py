@@ -25,7 +25,8 @@ from app.models import (
     RestRunRequest,
 )
 from app.services.exporter import create_csv, create_json, create_xlsx, safe_filename
-from app.services.graphql_client import build_request_headers, execute_paginated
+from app.services.graphql_client import build_request_headers
+from app.services.iteration import execute_graphql_with_iteration, execute_rest_with_iteration
 from app.services.openapi_importer import fetch_openapi_templates
 from app.services.api_documentation import (
     generated_documentation,
@@ -33,7 +34,7 @@ from app.services.api_documentation import (
     refresh_documentation,
     save_documentation_record,
 )
-from app.services.rest_client import execute_rest_paginated, resolve_endpoint_parameters
+from app.services.rest_client import resolve_endpoint_parameters
 from app.services.saved_query_groups import load_saved_query_groups, save_saved_query_groups
 from app.services.state_store import ping_database
 from app.services.saved_queries import (
@@ -243,7 +244,10 @@ async def test_connection(request: ConnectionTestRequest) -> dict[str, object]:
 
 @app.post("/api/run", response_model=ApiRunResponse)
 async def run_query(request: GraphQLRunRequest) -> ApiRunResponse:
-    return await execute_paginated(request)
+    try:
+        return await execute_graphql_with_iteration(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/rest/test-connection")
@@ -296,7 +300,10 @@ async def test_rest_connection(request: RestConnectionTestRequest) -> dict[str, 
 
 @app.post("/api/rest/run", response_model=ApiRunResponse)
 async def run_rest_query(request: RestRunRequest) -> ApiRunResponse:
-    return await execute_rest_paginated(request)
+    try:
+        return await execute_rest_with_iteration(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/openapi/templates")

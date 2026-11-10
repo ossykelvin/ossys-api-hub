@@ -44,6 +44,24 @@ def get_path(data: Any, path: str | None, default: Any = None) -> Any:
     return current
 
 
+def set_path(data: dict[str, Any], path: str, value: Any) -> None:
+    """Set a dotted dictionary path, creating missing containers."""
+    parts = [part.strip() for part in path.split(".") if part.strip()]
+    if not parts:
+        raise ValueError("path cannot be blank")
+
+    current: dict[str, Any] = data
+    for part in parts[:-1]:
+        nested = current.get(part)
+        if nested is None:
+            nested = {}
+            current[part] = nested
+        if not isinstance(nested, dict):
+            raise ValueError(f"iteration path '{path}' crosses non-object field '{part}'")
+        current = nested
+    current[parts[-1]] = value
+
+
 def normalize_records(items: Any, record_path: str | None = None) -> list[dict[str, Any]]:
     items = decode_json_container(items)
     if items is None:

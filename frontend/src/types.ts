@@ -2,6 +2,20 @@ export type PaginationMode = 'none' | 'cursor' | 'page' | 'offset' | 'token'
 export type ApiMode = 'graphql' | 'rest'
 export type RestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'COPY'
 export type RestBodyFormat = 'json' | 'form'
+export type IterationMode = 'date' | 'number'
+
+export interface IterationConfig {
+  enabled: boolean
+  mode: IterationMode
+  parameter_path: string
+  end_parameter_path?: string | null
+  start_value: string
+  end_value: string
+  step: number
+  location: 'query' | 'body'
+  max_iterations: number
+  delay_ms: number
+}
 
 export interface PaginationConfig {
   mode: PaginationMode
@@ -34,6 +48,7 @@ export interface RunResponse {
   duration_ms: number
   errors: Array<{ page: number; message: string; details?: unknown }>
   stopped_reason: string
+  iteration_count: number
 }
 
 export interface SavedQuery {
@@ -45,6 +60,7 @@ export interface SavedQuery {
   variablesText: string
   headersText: string
   pagination: PaginationConfig
+  iteration?: IterationConfig
   updatedAt: string
   apiMode?: ApiMode
   restMethod?: RestMethod

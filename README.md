@@ -16,6 +16,7 @@ Ossy's API Hub is a local-first reporting workspace for GraphQL and REST APIs. I
 - CSV and JSON downloads
 - Queries and groups persisted by the local backend
 - Group-scoped bearer tokens persisted in the browser only and never stored with queries
+- Shared API keys: set the Connection card's Group API key once per group and endpoint origin. Run and Test automatically send the `apikey` header. An unambiguous key from existing saved requests is reused automatically; per-request headers override it. Manual edits remain in tab session storage, including across reloads.
 - Search saved APIs by name or partial endpoint URL
 - Copy queries and active result views with one click
 - Access tokens returned by REST authentication endpoints are captured automatically and passed to subsequent requests

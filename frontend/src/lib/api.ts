@@ -1,4 +1,4 @@
-import type { ApiDocumentation, PaginationConfig, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from '../types'
+import type { ApiDocumentation, IterationConfig, PaginationConfig, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
   ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
@@ -88,6 +88,7 @@ export async function runGraphQL(input: {
   query: string
   variables: Record<string, unknown>
   pagination: PaginationConfig
+  iteration: IterationConfig
   timeout_seconds: number
   verify_ssl: boolean
 }, signal?: AbortSignal): Promise<RunResponse> {
@@ -110,6 +111,7 @@ export async function runRest(input: {
   body?: Record<string, unknown>
   body_format: RestBodyFormat
   pagination: PaginationConfig
+  iteration: IterationConfig
   pagination_location: 'query' | 'body'
   timeout_seconds: number
   verify_ssl: boolean

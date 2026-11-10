@@ -461,6 +461,8 @@ button:not(:disabled):active { color: var(--primary-contrast) !important; backgr
 .rest-full-editor textarea { min-height: 110px; }
 .settings-card { padding-bottom: 15px; }
 .settings-card > .field, .settings-card > .two-column { margin: 12px 15px 0; }
+.settings-subtitle { margin: 18px 15px 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text); font-size: 13px; font-weight: 800; }
+.settings-subtitle .check-field { height: auto; align-self: auto; }
 .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .check-field { height: 39px; align-self: end; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
 .results-card { margin-top: 16px; min-height: 360px; overflow: hidden; }

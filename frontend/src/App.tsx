@@ -5,6 +5,7 @@ import {
   Plus, RefreshCw, Save, Search, Settings2, ShieldAlert, Sun, Table2, Trash2, Wifi, XCircle,
 } from 'lucide-react'
 import './App.css'
+import { connectionKey, inheritedApiKey, withApiKey } from './lib/groupApiKey'
 import {
   AUTH_REQUIRED_EVENT, cancelAuthorization, deleteSavedQuery, downloadExport, getQueryDocumentation, getSavedQueries,
   getSavedQueryGroups, importOpenApiTemplates, provideAuthorization,
@@ -15,7 +16,7 @@ import {
   DEFAULT_SAVED_QUERY_GROUP, flattenRecord, loadSavedQueries,
   parseHeaders, parseJsonObject, uniqueReportFileStem,
 } from './lib/data'
-import type { ApiDocumentation, ApiDocumentationInputField, ApiDocumentationOutputField, ApiMode, PaginationConfig, PaginationMode, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from './types'
+import type { ApiDocumentation, ApiDocumentationInputField, ApiDocumentationOutputField, ApiMode, IterationConfig, IterationMode, PaginationConfig, PaginationMode, RestBodyFormat, RestMethod, RunResponse, SavedQuery } from './types'
 
 const defaultQuery = `query GetRecords($first: Int!, $after: String) {
   records(first: $first, after: $after) {
@@ -69,9 +70,23 @@ const defaultRestPagination: PaginationConfig = {
   next_token_path: 'nextToken',
 }
 
+const defaultIteration: IterationConfig = {
+  enabled: false,
+  mode: 'date',
+  parameter_path: 'dateRange.start',
+  end_parameter_path: 'dateRange.end',
+  start_value: '',
+  end_value: '',
+  step: 1,
+  location: 'query',
+  max_iterations: 1000,
+  delay_ms: 0,
+}
+
 const SAVED_KEY = 'graphql-hub.saved-queries.v1'
 const THEME_KEY = 'graphql-hub.theme'
 const GROUP_TOKENS_KEY = 'graphql-hub.group-tokens.v1'
+const GROUP_API_KEYS_KEY = 'graphql-hub.group-api-keys.v1'
 const GROUP_TOKEN_EXPIRIES_KEY = 'graphql-hub.group-token-expiries.v1'
 const SELECTED_QUERY_KEY = 'graphql-hub.selected-query.v1'
 const ACTIVE_GROUP_KEY = 'graphql-hub.active-group.v1'
@@ -196,9 +211,9 @@ function normalizedGroup(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_SAVED_QUERY_GROUP
 }
 
-function loadGroupTokens(): Record<string, string> {
+function loadGroupTokens(storageKey = GROUP_TOKENS_KEY): Record<string, string> {
   try {
-    const stored: unknown = JSON.parse(sessionStorage.getItem(GROUP_TOKENS_KEY) || '{}')
+    const stored: unknown = JSON.parse(sessionStorage.getItem(storageKey) || '{}')
     if (!stored || Array.isArray(stored) || typeof stored !== 'object') return {}
     return Object.fromEntries(
       Object.entries(stored).filter(([group, value]) => group.trim() && typeof value === 'string'),
@@ -285,10 +300,12 @@ function App() {
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [groupTokens, setGroupTokens] = useState<Record<string, string>>(loadGroupTokens)
+  const [groupApiKeys, setGroupApiKeys] = useState<Record<string, string>>(() => loadGroupTokens(GROUP_API_KEYS_KEY))
   const [groupTokenExpiries, setGroupTokenExpiries] = useState<Record<string, number>>(loadGroupTokenExpiries)
   const [tokenClock, setTokenClock] = useState(Date.now)
   const activeTokenGroup = normalizedGroup(queryGroup)
   const token = groupTokens[activeTokenGroup] ?? ''
+  const apiKeyScope = connectionKey(activeTokenGroup, endpoint)
   const tokenExpiresAt = useMemo(
     () => groupTokenExpiries[activeTokenGroup] ?? (token ? jwtExpiry(token) : null),
     [activeTokenGroup, groupTokenExpiries, token],
@@ -304,6 +321,7 @@ function App() {
   const [restBodyFormat, setRestBodyFormat] = useState<RestBodyFormat>('json')
   const [paginationLocation, setPaginationLocation] = useState<'query' | 'body'>('query')
   const [pagination, setPagination] = useState<PaginationConfig>({ ...defaultPagination })
+  const [iteration, setIteration] = useState<IterationConfig>({ ...defaultIteration })
   const [verifySsl, setVerifySsl] = useState(true)
   const [timeoutSeconds, setTimeoutSeconds] = useState(60)
   const [result, setResult] = useState<RunResponse | null>(null)
@@ -313,6 +331,7 @@ function App() {
   const [error, setError] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>(() => loadSavedQueries(localStorage.getItem(SAVED_KEY)))
+  const sharedApiKey = activeTokenGroup === ALL_GROUPS_VALUE ? '' : groupApiKeys[apiKeyScope] ?? inheritedApiKey(activeTokenGroup, endpoint, savedQueries)
   const [savedQueriesReady, setSavedQueriesReady] = useState(false)
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(() => sessionStorage.getItem(SELECTED_QUERY_KEY))
   const [sidebarSearch, setSidebarSearch] = useState('')
@@ -325,6 +344,7 @@ function App() {
   const [documentationError, setDocumentationError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const destructiveChallengeResolverRef = useRef<((confirmed: boolean) => void) | null>(null)
+  const handleRunRef = useRef<(() => Promise<void>) | null>(null)
   const restoredSelectionRef = useRef(false)
   const themePickerRef = useRef<HTMLDetailsElement | null>(null)
 
@@ -345,6 +365,7 @@ function App() {
     setRestBodyFormat(item.restBodyFormat ?? 'json')
     setPaginationLocation(item.paginationLocation ?? 'query')
     setPagination({ ...(savedApiMode === 'graphql' ? defaultPagination : defaultRestPagination), ...item.pagination })
+    setIteration({ ...defaultIteration, ...item.iteration })
     setStatus(`Loaded ${item.name}`)
   }, [])
 
@@ -403,6 +424,7 @@ function App() {
   }
 
   useEffect(() => sessionStorage.setItem(GROUP_TOKENS_KEY, JSON.stringify(groupTokens)), [groupTokens])
+  useEffect(() => sessionStorage.setItem(GROUP_API_KEYS_KEY, JSON.stringify(groupApiKeys)), [groupApiKeys])
 
   useEffect(() => sessionStorage.setItem(GROUP_TOKEN_EXPIRIES_KEY, JSON.stringify(groupTokenExpiries)), [groupTokenExpiries])
 
@@ -566,6 +588,10 @@ function App() {
 
   function updatePagination<K extends keyof PaginationConfig>(key: K, value: PaginationConfig[K]) {
     setPagination((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateIteration<K extends keyof IterationConfig>(key: K, value: IterationConfig[K]) {
+    setIteration((current) => ({ ...current, [key]: value }))
   }
 
   function setTokenForGroup(group: string, value: string, expiresAt: number | null = jwtExpiry(value)) {
@@ -796,6 +822,7 @@ function App() {
     setRestBodyFormat('json')
     setPaginationLocation('query')
     setPagination({ ...(apiMode === 'graphql' ? defaultPagination : defaultRestPagination) })
+    setIteration({ ...defaultIteration })
     setResult(null)
     setError('')
     setStatus('New query ready')
@@ -806,7 +833,7 @@ function App() {
     return {
       endpoint: endpoint.trim(),
       bearer_token: token.trim() || undefined,
-      headers: parseHeaders(headersText),
+      headers: withApiKey(parseHeaders(headersText), sharedApiKey),
       timeout_seconds: timeoutSeconds,
       verify_ssl: verifySsl,
     }
@@ -818,6 +845,7 @@ function App() {
       query,
       variables: parseJsonObject(variablesText, 'Variables'),
       pagination,
+      iteration,
     }
   }
 
@@ -829,6 +857,7 @@ function App() {
       body: restMethod !== 'GET' ? parseJsonObject(restBodyText, 'Request body') : undefined,
       body_format: restBodyFormat,
       pagination,
+      iteration,
       pagination_location: paginationLocation,
     }
   }
@@ -836,6 +865,7 @@ function App() {
   function handleApiModeChange(mode: ApiMode) {
     setApiMode(mode)
     setPagination({ ...(mode === 'graphql' ? defaultPagination : defaultRestPagination) })
+    setIteration({ ...defaultIteration })
     setConnectionStatus('idle')
     setResult(null)
     setError('')
@@ -875,7 +905,7 @@ function App() {
       const controller = new AbortController()
       abortRef.current = controller
       setRunning(true)
-      setStatus(pagination.page_count === 'all' ? 'Collecting all pages…' : 'Executing report…')
+      setStatus(iteration.enabled ? 'Iterating parameters and collecting results…' : pagination.page_count === 'all' ? 'Collecting all pages…' : 'Executing report…')
       const response = await executeRequest(controller.signal)
       const capturedToken = apiMode === 'rest' ? findAccessToken(response.pages) : null
       if (capturedToken) setTokenForGroup(queryGroup, capturedToken.value, capturedToken.expiresAt)
@@ -883,6 +913,7 @@ function App() {
       setResultTab(response.errors.length > 0 ? 'errors' : 'json')
       setStatus(
         `${response.record_count.toLocaleString()} records from ${response.page_count} page${response.page_count === 1 ? '' : 's'}`
+        + (response.iteration_count > 1 ? ` across ${response.iteration_count} iterations` : '')
         + (capturedToken
           ? ` · token federated to ${sectionEndpointCount.toLocaleString()} API${sectionEndpointCount === 1 ? '' : 's'} in ${normalizedGroup(queryGroup)}`
           : ''),
@@ -895,6 +926,38 @@ function App() {
       abortRef.current = null
     }
   }
+
+  useEffect(() => {
+    handleRunRef.current = handleRun
+  })
+
+  useEffect(() => {
+    const runWithKeyboardShortcut = (event: KeyboardEvent) => {
+      if ((!event.ctrlKey && !event.metaKey) || event.key !== 'Enter' || event.repeat) return
+
+      event.preventDefault()
+      if (running || authenticationOpen || documentationOpen) return
+
+      if (destructiveChallenge) {
+        if (destructiveChallengeConfirmed && destructiveChallengeInput === destructiveChallenge.code) {
+          finishDestructiveChallenge(true)
+        }
+        return
+      }
+
+      void handleRunRef.current?.()
+    }
+
+    document.addEventListener('keydown', runWithKeyboardShortcut)
+    return () => document.removeEventListener('keydown', runWithKeyboardShortcut)
+  }, [
+    authenticationOpen,
+    destructiveChallenge,
+    destructiveChallengeConfirmed,
+    destructiveChallengeInput,
+    documentationOpen,
+    running,
+  ])
 
   async function handleTest() {
     setError('')
@@ -938,7 +1001,7 @@ function App() {
       id,
       group: normalizedGroup(queryGroup),
       name: queryName.trim() || 'Untitled report',
-      endpoint, query, variablesText, headersText, pagination,
+      endpoint, query, variablesText, headersText, pagination, iteration,
       updatedAt: new Date().toISOString(),
       apiMode,
       restMethod,
@@ -991,6 +1054,7 @@ function App() {
         endpoint,
         run_summary: {
           'Pages retrieved': result.page_count,
+          'Iterations completed': result.iteration_count,
           'Records retrieved': result.record_count,
           'Duration (ms)': result.duration_ms,
           'Stopped because': result.stopped_reason,
@@ -1238,7 +1302,7 @@ function App() {
             <button className="secondary-button" onClick={handleSave}><Save size={16} /> Save</button>
             {running
               ? <button className="danger-button" onClick={() => abortRef.current?.abort()}><CircleStop size={16} /> Cancel</button>
-              : <button className="primary-button" onClick={handleRun}><Play size={16} /> Run report</button>}
+              : <button className="primary-button" onClick={handleRun} title="Run report (Ctrl+Enter)"><Play size={16} /> Run report</button>}
           </div>
         </header>
 
@@ -1251,6 +1315,13 @@ function App() {
             <label className="field"><span>Bearer token {token && <em className="memory-badge">{normalizedGroup(queryGroup)} · {sectionEndpointCount} APIs</em>}{token && <em className={`token-expiry-badge ${tokenExpiresAt ? tokenExpiresAt <= tokenClock ? 'expired' : '' : 'unknown'}`} title={tokenExpiresAt ? `Expires ${new Date(tokenExpiresAt).toLocaleString()}` : 'This token did not provide expiration information'}><Clock3 size={10} /> {tokenExpiresAt ? formatTokenCountdown(tokenExpiresAt, tokenClock) : 'Expiry unknown'}</em>}</span><div className="input-with-icon"><KeyRound size={16} /><input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setTokenForGroup(queryGroup, e.target.value)} placeholder="Federated to every API in this section" /><button onClick={() => setShowToken((value) => !value)} type="button">{showToken ? 'Hide' : 'Show'}</button></div></label>
             <button className="secondary-button test-button" onClick={handleTest} disabled={connectionStatus === 'testing'}>{connectionStatus === 'testing' ? <LoaderCircle className="spin" size={16} /> : <Wifi size={16} />} Test</button>
           </div>
+          <label className="field" style={{ marginTop: 12 }}>
+            <span>Group API key (apikey header)</span>
+            <input type="password" autoComplete="off" value={sharedApiKey} disabled={!apiKeyScope || activeTokenGroup === ALL_GROUPS_VALUE}
+              onChange={(event) => setGroupApiKeys(current => ({ ...current, [apiKeyScope]: event.target.value.trim() }))}
+              placeholder="Set once for this group and endpoint origin" />
+            <small>Applied to requests in this group on the same origin. Request-specific apikey headers take precedence. Edits are kept for this browser tab session.</small>
+          </label>
         </section>
 
         <section className="editor-grid">
@@ -1303,6 +1374,24 @@ function App() {
             {pagination.mode === 'offset' && <div className="two-column"><label className="field"><span>Offset variable</span><input value={pagination.offset_variable} onChange={(e) => updatePagination('offset_variable', e.target.value)} /></label><label className="field"><span>Limit variable</span><input value={pagination.limit_variable} onChange={(e) => updatePagination('limit_variable', e.target.value)} /></label></div>}
             {pagination.mode === 'token' && <div className="two-column"><label className="field"><span>Token variable</span><input value={pagination.token_variable} onChange={(e) => updatePagination('token_variable', e.target.value)} /></label><label className="field"><span>Next-token path</span><input value={pagination.next_token_path} onChange={(e) => updatePagination('next_token_path', e.target.value)} /></label></div>}
             <div className="two-column"><label className="field"><span>Maximum pages</span><input type="number" value={pagination.max_pages} onChange={(e) => updatePagination('max_pages', Number(e.target.value))} /></label><label className="field"><span>Delay (ms)</span><input type="number" value={pagination.delay_ms} onChange={(e) => updatePagination('delay_ms', Number(e.target.value))} /></label></div>
+            <div className="settings-subtitle"><span>Parameter iteration</span><label className="check-field"><input type="checkbox" checked={iteration.enabled} onChange={(e) => updateIteration('enabled', e.target.checked)} /><span>Enable</span></label></div>
+            {iteration.enabled && <>
+              <div className="two-column">
+                <label className="field"><span>Value type</span><select value={iteration.mode} onChange={(e) => updateIteration('mode', e.target.value as IterationMode)}><option value="date">Date</option><option value="number">Number</option></select></label>
+                {apiMode === 'rest' && <label className="field"><span>Parameter location</span><select value={iteration.location} onChange={(e) => updateIteration('location', e.target.value as 'query' | 'body')}><option value="query">Query parameters</option><option value="body" disabled={restMethod === 'GET'}>Request body</option></select></label>}
+              </div>
+              <label className="field"><span>{apiMode === 'graphql' ? 'Variable path' : 'Parameter path'}</span><input value={iteration.parameter_path} onChange={(e) => updateIteration('parameter_path', e.target.value)} placeholder={apiMode === 'graphql' ? 'dateRange.start' : 'filters.startDate'} /><small>Use a dotted JSON path to the value that should advance.</small></label>
+              {iteration.mode === 'date' && <label className="field"><span>End-date path (optional)</span><input value={iteration.end_parameter_path || ''} onChange={(e) => updateIteration('end_parameter_path', e.target.value)} placeholder="dateRange.end" /><small>When supplied, both paths receive the same day while retaining their original times.</small></label>}
+              <div className="two-column">
+                <label className="field"><span>Range start</span><input type={iteration.mode === 'date' ? 'date' : 'number'} value={iteration.start_value} onChange={(e) => updateIteration('start_value', e.target.value)} /></label>
+                <label className="field"><span>Range end</span><input type={iteration.mode === 'date' ? 'date' : 'number'} value={iteration.end_value} onChange={(e) => updateIteration('end_value', e.target.value)} /></label>
+              </div>
+              <div className="two-column">
+                <label className="field"><span>{iteration.mode === 'date' ? 'Step (days)' : 'Step'}</span><input type="number" min="0.000001" step={iteration.mode === 'date' ? 1 : 'any'} value={iteration.step} onChange={(e) => updateIteration('step', Number(e.target.value))} /></label>
+                <label className="field"><span>Maximum iterations</span><input type="number" min="1" max="10000" value={iteration.max_iterations} onChange={(e) => updateIteration('max_iterations', Number(e.target.value))} /></label>
+              </div>
+              <label className="field"><span>Delay between iterations (ms)</span><input type="number" min="0" max="30000" value={iteration.delay_ms} onChange={(e) => updateIteration('delay_ms', Number(e.target.value))} /></label>
+            </>}
             <div className="two-column"><label className="field"><span>Timeout (seconds)</span><input type="number" value={timeoutSeconds} onChange={(e) => setTimeoutSeconds(Number(e.target.value))} /></label><label className="check-field"><input type="checkbox" checked={verifySsl} onChange={(e) => setVerifySsl(e.target.checked)} /><span>Verify SSL</span></label></div>
           </div>
         </section>
@@ -1323,7 +1412,7 @@ function App() {
           </div>
 
           {!result && !running && <div className="empty-results"><div className="empty-icon"><Layers3 size={28} /></div><h3>Your report results will appear here</h3><p>Connect to an endpoint, configure pagination and run the request.</p></div>}
-          {running && <div className="empty-results"><LoaderCircle className="spin" size={32} /><h3>Retrieving GraphQL pages</h3><p>The Python service is combining records locally.</p></div>}
+          {running && <div className="empty-results"><LoaderCircle className="spin" size={32} /><h3>{iteration.enabled ? 'Iterating requests' : 'Retrieving API pages'}</h3><p>The service is combining every page and iteration into one result.</p></div>}
           {result && resultTab === 'json' && <pre className="json-view">{JSON.stringify(result.pages.length === 1 ? result.pages[0] : result.pages, null, 2)}</pre>}
           {result && resultTab === 'table' && <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.slice(0, 500).map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{row[column] == null ? '' : String(row[column])}</td>)}</tr>)}</tbody></table>{rows.length > 500 && <div className="preview-note">Showing the first 500 rows. Downloads include all {rows.length.toLocaleString()} records.</div>}</div>}
           {result && resultTab === 'errors' && <div className="error-list">{result.errors.length === 0 ? <div className="success-empty"><CheckCircle2 size={28} /><h3>No GraphQL or request errors</h3></div> : result.errors.map((item, index) => <div className="error-item" key={index}><strong>Page {item.page}: {item.message}</strong>{item.details != null && <pre>{JSON.stringify(item.details, null, 2)}</pre>}</div>)}</div>}
@@ -1331,7 +1420,7 @@ function App() {
 
         <footer className="statusbar">
           <span className={running ? 'working-dot' : 'ready-dot'} /> {status}
-          {result && <><span><Database size={13} /> {result.record_count.toLocaleString()} records</span><span><Layers3 size={13} /> {result.page_count} pages</span><span><Clock3 size={13} /> {(result.duration_ms / 1000).toFixed(2)}s</span></>}
+          {result && <><span><Database size={13} /> {result.record_count.toLocaleString()} records</span><span><Layers3 size={13} /> {result.page_count} pages</span>{result.iteration_count > 1 && <span><RefreshCw size={13} /> {result.iteration_count} iterations</span>}<span><Clock3 size={13} /> {(result.duration_ms / 1000).toFixed(2)}s</span></>}
         </footer>
       </main>
 

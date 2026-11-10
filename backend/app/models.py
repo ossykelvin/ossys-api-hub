@@ -14,6 +14,34 @@ class PaginationMode(str, Enum):
     TOKEN = "token"
 
 
+class IterationMode(str, Enum):
+    DATE = "date"
+    NUMBER = "number"
+
+
+class IterationConfig(BaseModel):
+    enabled: bool = False
+    mode: IterationMode = IterationMode.DATE
+    parameter_path: str = ""
+    end_parameter_path: str | None = None
+    start_value: str = ""
+    end_value: str = ""
+    step: float = Field(default=1, gt=0)
+    location: Literal["query", "body"] = "query"
+    max_iterations: int = Field(default=1000, ge=1, le=10000)
+    delay_ms: int = Field(default=0, ge=0, le=30000)
+
+    @model_validator(mode="after")
+    def validate_enabled_iteration(self) -> "IterationConfig":
+        if not self.enabled:
+            return self
+        if not self.parameter_path.strip():
+            raise ValueError("iteration parameter_path cannot be blank")
+        if not self.start_value.strip() or not self.end_value.strip():
+            raise ValueError("iteration start_value and end_value cannot be blank")
+        return self
+
+
 class PaginationConfig(BaseModel):
     mode: PaginationMode = PaginationMode.NONE
     items_path: str = "data"
@@ -73,6 +101,7 @@ class GraphQLRunRequest(BaseModel):
     query: str = Field(min_length=1)
     variables: dict[str, Any] = Field(default_factory=dict)
     pagination: PaginationConfig = Field(default_factory=PaginationConfig)
+    iteration: IterationConfig = Field(default_factory=IterationConfig)
     timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     verify_ssl: bool = True
 
@@ -93,6 +122,7 @@ class RestRunRequest(BaseModel):
     body: dict[str, Any] | None = None
     body_format: Literal["json", "form"] = "json"
     pagination: PaginationConfig = Field(default_factory=lambda: PaginationConfig(items_path=""))
+    iteration: IterationConfig = Field(default_factory=IterationConfig)
     pagination_location: Literal["query", "body"] = "query"
     timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     verify_ssl: bool = True
@@ -118,6 +148,7 @@ class ApiRunResponse(BaseModel):
     duration_ms: int
     errors: list[RunError]
     stopped_reason: str
+    iteration_count: int = 1
 
 
 class ConnectionTestRequest(BaseModel):
